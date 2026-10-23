@@ -1,4 +1,7 @@
-export type Role = 'SUPER_ADMIN' | 'BL_ADMIN';
+export type Role = 'SUPER_ADMIN' | 'CORPORATOR' | 'BLO';
+
+/** Roles an account can be created with: a Super Admin creates any role (Super Admins too), a Corporator only BLOs. */
+export type ManagedRole = Role;
 
 export type AccountStatus = 'Active' | 'Inactive';
 
@@ -7,20 +10,33 @@ export interface Admin {
   fullName: string;
   mobile: string;
   role: Role;
+  /** The Corporator a BLO belongs to (fixed at creation); null for other roles. */
+  corporatorId: string | null;
+  /** Where a Corporator is based (free text entered by the Super Admin); empty for other roles. */
+  location: string;
   wardIds: string[];
+  /** Booths narrowing a ward (BLOs only; Corporators always cover whole wards). */
   boothIds: string[];
   status: AccountStatus;
   createdAt: string;
 }
 
+/** Small account summary for filters and assignment pickers. */
+export type AdminOption = Pick<Admin, 'id' | 'fullName' | 'role' | 'corporatorId' | 'wardIds'>;
+
 export interface AdminInput {
   fullName: string;
   mobile: string;
+  /** Corporators only; ignored for other roles. */
+  location?: string;
   wardIds: string[];
   boothIds: string[];
 }
 
 export interface AdminQuery {
+  role?: ManagedRole;
+  /** BLOs of one Corporator (Super Admin filter; Corporators always see only their own). */
+  corporatorId?: string;
   search?: string;
   wardId?: string;
   status?: AccountStatus | '';
@@ -31,7 +47,10 @@ export interface AdminQuery {
 }
 
 export interface AdminCreateInput extends AdminInput {
-  /** Initial password chosen by the Super Admin. */
+  role: ManagedRole;
+  /** Required when the Super Admin creates a BLO; a Corporator always creates BLOs for itself. */
+  corporatorId?: string;
+  /** Initial password chosen by the creator. */
   password: string;
 }
 
@@ -57,7 +76,7 @@ export interface WardSummary extends Ward {
 export const VOTER_STATUSES = ['Active', 'Not Active', 'Shifted'] as const;
 export type VoterStatus = (typeof VOTER_STATUSES)[number];
 
-export type DonationStatus = 'Received' | 'Not Received';
+export type PaymentStatus = 'Received' | 'Not Received';
 
 export interface Voter {
   recordId: string;
@@ -87,12 +106,10 @@ export interface VoterInput {
 }
 
 export interface VoterListItem extends Voter {
-  donationStatus: DonationStatus;
-  latestDonation: DonationTransaction | null;
-  /** Whether the logged-in admin may record a donation for this voter (server decided). */
-  canRecordDonation: boolean;
-  /** True when the voter belongs to one of the logged-in admin's assigned wards. */
-  inMyWards: boolean;
+  paymentStatus: PaymentStatus;
+  latestPayment: PaymentTransaction | null;
+  /** Whether the logged-in admin may record a payment for this voter (server decided). */
+  canRecordPayment: boolean;
 }
 
 export interface VoterQuery {
@@ -100,8 +117,7 @@ export interface VoterQuery {
   wardId?: string;
   boothId?: string;
   status?: VoterStatus | '';
-  donationStatus?: DonationStatus | '';
-  scope?: 'all' | 'mine';
+  paymentStatus?: PaymentStatus | '';
   sortBy?: 'voterId' | 'fullName' | 'ward' | 'booth' | 'houseNumber' | 'status';
   sortDir?: 'asc' | 'desc';
   page?: number;
@@ -115,7 +131,7 @@ export interface DuplicateCheckResult {
 
 export type TransactionStatus = 'Success' | 'Cancelled' | 'Reversed';
 
-export interface DonationTransaction {
+export interface PaymentTransaction {
   id: string;
   voterRecordId: string;
   voterId: string;
@@ -132,7 +148,7 @@ export interface DonationTransaction {
   statusReason?: string;
 }
 
-export interface DonationInput {
+export interface PaymentInput {
   voterRecordId: string;
   amount: number;
   receiverName: string;
@@ -141,12 +157,12 @@ export interface DonationInput {
   idempotencyKey: string;
 }
 
-export interface CancelDonationInput {
+export interface CancelPaymentInput {
   kind: 'Cancelled' | 'Reversed';
   reason: string;
 }
 
-export interface DonationQuery {
+export interface PaymentQuery {
   search?: string;
   from?: string;
   to?: string;
@@ -154,13 +170,13 @@ export interface DonationQuery {
   boothId?: string;
   adminId?: string;
   status?: TransactionStatus | '';
-  sortBy?: 'timestamp' | 'amount' | 'voterName' | 'id' | 'receiverName';
+  sortBy?: 'timestamp' | 'amount' | 'voterName' | 'receiverName';
   sortDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
 }
 
-export interface DonationSettings {
+export interface PaymentSettings {
   defaultAmount: number;
   currency: 'INR';
   effectiveDate: string;
@@ -177,9 +193,9 @@ export interface SettingsHistoryEntry {
 }
 
 export interface SettingsResponse {
-  settings: DonationSettings;
+  settings: PaymentSettings;
   history: SettingsHistoryEntry[];
-  /** Amount in effect today for new donations. */
+  /** Amount in effect today for new payments. */
   currentAmount: number;
 }
 
@@ -189,7 +205,7 @@ export interface AuditLog {
   adminId: string;
   adminName: string;
   action: string;
-  entity: 'Admin' | 'Ward' | 'Booth' | 'Voter' | 'Import' | 'Donation' | 'Settings' | 'Export' | 'Auth';
+  entity: 'Admin' | 'Ward' | 'Booth' | 'Voter' | 'Import' | 'Payment' | 'Settings' | 'Export' | 'Auth';
   recordRef: string;
   result: 'Success' | 'Failure';
   summary: string;
@@ -235,7 +251,7 @@ export interface ReportFilters {
   adminId?: string;
 }
 
-export interface DonationContext {
+export interface PaymentContext {
   suggestedAmount: number;
   /** Whether the prefilled amount may be changed (Settings). */
   amountEditable: boolean;
@@ -243,11 +259,11 @@ export interface DonationContext {
 
 export interface VoterDetail {
   voter: VoterListItem;
-  transactions: DonationTransaction[];
+  transactions: PaymentTransaction[];
 }
 
 export interface TransactionDetail {
-  transaction: DonationTransaction;
+  transaction: PaymentTransaction;
   audit: AuditLog[];
 }
 
@@ -275,7 +291,10 @@ export interface GroupRow {
 }
 
 export interface DashboardStats {
-  totalAdmins: number | null;
+  /** Super Admin only. */
+  totalCorporators: number | null;
+  /** Super Admin: all BLOs; Corporator: their own BLOs; BLO: null. */
+  totalBlos: number | null;
   totalVoters: number;
   totalWards: number;
   totalBooths: number;
@@ -292,7 +311,7 @@ export interface DashboardStats {
   byBooth: GroupRow[];
   byAdmin: { adminId: string; adminName: string; transactions: number; amount: number }[];
   overTime: { date: string; amount: number; transactions: number }[];
-  recentTransactions: DonationTransaction[];
+  recentTransactions: PaymentTransaction[];
   recentActivity: AuditLog[];
 }
 

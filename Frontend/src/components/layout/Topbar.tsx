@@ -7,6 +7,7 @@ import { errorMessage } from '../../services/apiError';
 import { reportService } from '../../services/reportService';
 import type { Notification } from '../../types';
 import { formatDateTime } from '../../utils/format';
+import { ROLE_LABELS } from '../../utils/permissions';
 import { Spinner } from '../common/States';
 import { Breadcrumbs } from './Breadcrumbs';
 import './Topbar.css';
@@ -142,7 +143,7 @@ function ProfileMenu() {
         <span className="profile-text">
           <span className="profile-name">{admin.fullName}</span>
           <span className="profile-role">
-            {admin.id} · {admin.role === 'SUPER_ADMIN' ? 'Super Admin' : 'BL Admin'}
+            {admin.id} · {ROLE_LABELS[admin.role]}
           </span>
         </span>
         <ChevronDown size={16} aria-hidden="true" className="profile-chevron" />

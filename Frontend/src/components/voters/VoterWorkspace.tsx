@@ -7,25 +7,24 @@ import { useToast } from '../../hooks/useToast';
 import { useWards } from '../../hooks/useWards';
 import { errorMessage } from '../../services/apiError';
 import { voterService } from '../../services/voterService';
-import { VOTER_STATUSES, type DonationStatus, type Voter, type VoterListItem, type VoterQuery, type VoterStatus } from '../../types';
+import { VOTER_STATUSES, type PaymentStatus, type Voter, type VoterListItem, type VoterQuery, type VoterStatus } from '../../types';
 import { downloadCsv } from '../../utils/download';
 import { formatDateTime } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
-import { DonationStatusBadge, VoterStatusBadge } from '../common/Badges';
+import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
+import { PaymentStatusBadge, VoterStatusBadge } from '../common/Badges';
 import { SearchInput } from '../common/SearchInput';
-import { DonationAction } from '../donations/DonationAction';
-import { RecordDonationModal } from '../donations/RecordDonationModal';
-import { TransactionDetailModal } from '../donations/TransactionDetailModal';
+import { PaymentAction } from '../payments/PaymentAction';
+import { RecordPaymentModal } from '../payments/RecordPaymentModal';
+import { TransactionDetailModal } from '../payments/TransactionDetailModal';
 import { DataTable, type Column, type SortState } from '../tables/DataTable';
 import { Pagination } from '../tables/Pagination';
 import { VoterDetailModal } from './VoterDetailModal';
 import { VoterFormModal, type VoterFormState } from './VoterFormModal';
 
 interface Props {
-  scope: 'all' | 'mine';
   initialWardId?: string;
   initialBoothId?: string;
-  initialDonationStatus?: DonationStatus | '';
+  initialPaymentStatus?: PaymentStatus | '';
   /** Shows the "Add voter" and export actions (Super Admin only). */
   manage?: boolean;
 }
@@ -37,36 +36,35 @@ function householdTemplate(v: Voter): VoterFormState {
   };
 }
 
-export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '', initialDonationStatus = '', manage = false }: Props) {
+export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initialPaymentStatus = '', manage = false }: Props) {
   const admin = useCurrentAdmin();
   const toast = useToast();
-  const { wards, boothsForWard, wardLabel, boothLabel } = useWards();
+  const { wards, booths, wardLabel, boothLabel } = useWards();
   const superAdmin = isSuperAdmin(admin);
 
   const [search, setSearch] = useState('');
   const [wardId, setWardId] = useState(initialWardId);
   const [boothId, setBoothId] = useState(initialBoothId);
   const [status, setStatus] = useState<VoterStatus | ''>('');
-  const [donationStatus, setDonationStatus] = useState<DonationStatus | ''>(initialDonationStatus);
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>(initialPaymentStatus);
   const [sort, setSort] = useState<SortState>({ sortBy: 'ward', sortDir: 'asc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const debouncedSearch = useDebounce(search.trim(), 300);
 
   const [detailId, setDetailId] = useState<string | null>(null);
-  const [donateFor, setDonateFor] = useState<VoterListItem | null>(null);
+  const [payFor, setPayFor] = useState<VoterListItem | null>(null);
   const [txId, setTxId] = useState<string | null>(null);
   const [form, setForm] = useState<VoterFormState | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [exporting, setExporting] = useState(false);
 
   const query: VoterQuery = {
-    scope,
     search: debouncedSearch,
     wardId,
     boothId,
     status,
-    donationStatus,
+    paymentStatus,
     sortBy: sort.sortBy as VoterQuery['sortBy'],
     sortDir: sort.sortDir,
     page,
@@ -75,9 +73,9 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
   const queryKey = JSON.stringify(query) + refreshKey;
   const { data, loading, error, reload } = useQuery(() => voterService.list(query), queryKey);
 
-  // "My Ward Voters" only offers the admin's own wards.
-  const wardOptions = scope === 'mine' && !superAdmin ? wards.filter((w) => admin.wardIds.includes(w.id)) : wards;
-  const boothOptions = wardId ? boothsForWard(wardId) : [];
+  // Corporators and BLOs only see their own area, so the filters only offer it.
+  const wardOptions = wardsInArea(admin, wards);
+  const boothOptions = wardId ? boothsInArea(admin, wardId, booths) : [];
 
   const resetPage = <T,>(setter: (v: T) => void) => (v: T) => {
     setter(v);
@@ -105,15 +103,15 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
       { key: 'house', header: 'House No.', sortKey: 'houseNumber', render: (v) => v.houseNumber },
       { key: 'status', header: 'Voter Status', sortKey: 'status', render: (v) => <VoterStatusBadge status={v.status} /> },
       {
-        key: 'donation',
-        header: 'Donation Status',
+        key: 'payment',
+        header: 'Payment Status',
         render: (v) =>
-          v.latestDonation ? (
-            <span title={`${v.latestDonation.receiverName} · ${formatDateTime(v.latestDonation.timestamp)}`}>
-              <DonationStatusBadge status="Received" />
+          v.latestPayment ? (
+            <span title={`${v.latestPayment.receiverName} · ${formatDateTime(v.latestPayment.timestamp)}`}>
+              <PaymentStatusBadge status="Received" />
             </span>
           ) : (
-            <DonationStatusBadge status="Not Received" />
+            <PaymentStatusBadge status="Not Received" />
           ),
       },
       {
@@ -122,7 +120,7 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
         hideLabelOnMobile: true,
         render: (v) => (
           <div className="row" style={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
-            <DonationAction voter={v} onDonate={setDonateFor} onViewReceipt={setTxId} />
+            <PaymentAction voter={v} onPay={setPayFor} onViewReceipt={setTxId} />
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailId(v.recordId)} aria-label={`View details for ${v.fullName}`} title="View details">
               <Eye size={16} aria-hidden="true" />
             </button>
@@ -139,7 +137,7 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
       const rows = await voterService.exportAll({ ...query, page: undefined, pageSize: undefined });
       downloadCsv(
         'voters.csv',
-        ['Voter ID', 'Full Name', 'Mobile', 'Ward', 'Booth', 'House Number', 'Household ID', 'Address', 'Voter Status', 'Donation Status', 'Receiver', 'Receiver Mobile', 'Received At'],
+        ['Voter ID', 'Full Name', 'Mobile', 'Ward', 'Booth', 'House Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
         rows.map((v) => [
           v.voterId,
           v.fullName,
@@ -150,10 +148,10 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
           v.householdId,
           v.address,
           v.status,
-          v.donationStatus,
-          v.latestDonation?.receiverName ?? '',
-          v.latestDonation?.receiverMobile ?? '',
-          v.latestDonation ? formatDateTime(v.latestDonation.timestamp) : '',
+          v.paymentStatus,
+          v.latestPayment?.receiverName ?? '',
+          v.latestPayment?.receiverMobile ?? '',
+          v.latestPayment ? formatDateTime(v.latestPayment.timestamp) : '',
         ]),
       );
       toast.success(`Exported ${rows.length} voters.`);
@@ -214,8 +212,8 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
               </select>
             </label>
             <label className="field">
-              <span className="field-label">Donation</span>
-              <select className="select" value={donationStatus} onChange={(e) => resetPage(setDonationStatus)(e.target.value as DonationStatus | '')}>
+              <span className="field-label">Payment</span>
+              <select className="select" value={paymentStatus} onChange={(e) => resetPage(setPaymentStatus)(e.target.value as PaymentStatus | '')}>
                 <option value="">All</option>
                 <option value="Received">Received</option>
                 <option value="Not Received">Not Received</option>
@@ -247,7 +245,7 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
             setSort(s);
             setPage(1);
           }}
-          emptyTitle={scope === 'mine' ? 'No voters in your wards match' : 'No voters found'}
+          emptyTitle={superAdmin ? 'No voters found' : 'No voters in your area match'}
         />
         {data && data.total > 0 && (
           <Pagination
@@ -268,7 +266,7 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
           recordId={detailId}
           refreshKey={refreshKey}
           onClose={() => setDetailId(null)}
-          onDonate={setDonateFor}
+          onPay={setPayFor}
           onViewTransaction={setTxId}
           onEdit={(v) => setForm({ mode: 'edit', recordId: v.recordId, initial: v })}
           onAddHouseholdMember={(v) => {
@@ -291,12 +289,12 @@ export function VoterWorkspace({ scope, initialWardId = '', initialBoothId = '',
         />
       )}
 
-      {donateFor && (
-        <RecordDonationModal
-          voter={donateFor}
-          onClose={() => setDonateFor(null)}
+      {payFor && (
+        <RecordPaymentModal
+          voter={payFor}
+          onClose={() => setPayFor(null)}
           onRecorded={(tx) => {
-            toast.success(`Donation recorded for ${tx.voterName}.`);
+            toast.success(`Payment recorded for ${tx.voterName}.`);
             refreshAll();
           }}
         />

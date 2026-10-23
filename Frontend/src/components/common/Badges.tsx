@@ -1,5 +1,5 @@
 import { CheckCircle2 } from 'lucide-react';
-import type { AccountStatus, DonationStatus, TransactionStatus, VoterStatus } from '../../types';
+import type { AccountStatus, PaymentStatus, TransactionStatus, VoterStatus } from '../../types';
 
 const VOTER_TONE: Record<VoterStatus, string> = {
   Active: 'badge-success',
@@ -11,7 +11,7 @@ export function VoterStatusBadge({ status }: { status: VoterStatus }) {
   return <span className={`badge ${VOTER_TONE[status]}`}>{status}</span>;
 }
 
-export function DonationStatusBadge({ status }: { status: DonationStatus }) {
+export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
   if (status === 'Received') {
     return (
       <span className="badge badge-success">

@@ -9,9 +9,10 @@ function deviceLabel(): string {
 }
 
 export const authService = {
-  login(mobile: string, password: string, remember: boolean): Promise<LoginResponse> {
-    if (USE_MOCK) return mockCall((s) => s.login(mobile, password, remember, deviceLabel()));
-    return apiClient.post<LoginResponse>('/auth/login', { mobile, password, remember }).then((r) => r.data);
+  /** `identifier` is a mobile number or a full name. */
+  login(identifier: string, password: string, remember: boolean): Promise<LoginResponse> {
+    if (USE_MOCK) return mockCall((s) => s.login(identifier, password, remember, deviceLabel()));
+    return apiClient.post<LoginResponse>('/auth/login', { identifier, password, remember }).then((r) => r.data);
   },
   logout(): Promise<void> {
     if (USE_MOCK) return mockCall((s, t) => s.logout(t));

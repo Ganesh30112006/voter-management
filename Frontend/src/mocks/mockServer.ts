@@ -11,14 +11,16 @@ import type {
   AuditLog,
   AuditQuery,
   Booth,
-  CancelDonationInput,
+  CancelPaymentInput,
   AdminCreateInput,
+  AdminOption,
+  ManagedRole,
   DashboardStats,
-  DonationContext,
-  DonationInput,
-  DonationQuery,
-  DonationSettings,
-  DonationTransaction,
+  PaymentContext,
+  PaymentInput,
+  PaymentQuery,
+  PaymentSettings,
+  PaymentTransaction,
   DuplicateCheckResult,
   GroupRow,
   ImportContext,
@@ -44,7 +46,7 @@ import { VOTER_STATUSES } from '../types';
 import { toDateInput } from '../utils/format';
 import { randomId } from '../utils/id';
 import { coversVoter } from '../utils/permissions';
-import { HOUSEHOLD_ID_PATTERN, MAX_DONATION_AMOUNT, PASSWORD_RULES, isValidIndianMobile, isValidPassword, normalizeMobile } from '../utils/validation';
+import { HOUSEHOLD_ID_PATTERN, MAX_PAYMENT_AMOUNT, PASSWORD_RULES, isValidIndianMobile, isValidPassword, nameKey, normalizeMobile } from '../utils/validation';
 import { loadDb, pad, resetDb, saveDb, type MockDb } from './db';
 
 const SESSION_HOURS = 8;
@@ -54,6 +56,10 @@ export { resetDb as resetMockDb };
 
 function fail(status: number, code: ApiErrorCode, message: string, fieldErrors?: Record<string, string>): never {
   throw new ApiError(status, code, message, fieldErrors);
+}
+
+function formatInr(n: number): string {
+  return `₹${n.toLocaleString('en-IN')}`;
 }
 
 function nowIso(): string {
@@ -152,8 +158,8 @@ function inDateRange(iso: string, from?: string, to?: string): boolean {
 }
 
 /** Latest successful transaction per voter. Cancelled/reversed transactions never count. */
-function latestSuccessByVoter(db: MockDb): Map<string, DonationTransaction> {
-  const map = new Map<string, DonationTransaction>();
+function latestSuccessByVoter(db: MockDb): Map<string, PaymentTransaction> {
+  const map = new Map<string, PaymentTransaction>();
   for (const t of db.transactions) {
     if (t.status !== 'Success') continue;
     const prev = map.get(t.voterRecordId);
@@ -162,15 +168,14 @@ function latestSuccessByVoter(db: MockDb): Map<string, DonationTransaction> {
   return map;
 }
 
-function toListItem(db: MockDb, admin: Admin, voter: Voter, latest: Map<string, DonationTransaction>): VoterListItem {
+function toListItem(db: MockDb, admin: Admin, voter: Voter, latest: Map<string, PaymentTransaction>): VoterListItem {
   const tx = latest.get(voter.recordId) ?? null;
   return {
     ...voter,
-    donationStatus: tx ? 'Received' : 'Not Received',
-    latestDonation: tx ? { ...tx } : null,
-    // Any active admin may record a donation for any voter who has not received one.
-    canRecordDonation: !tx,
-    inMyWards: covers(db, admin, voter),
+    paymentStatus: tx ? 'Received' : 'Not Received',
+    latestPayment: tx ? { ...tx } : null,
+    // Lists only contain voters in the admin's area, so any of them without a payment can be paid.
+    canRecordPayment: !tx && covers(db, admin, voter),
   };
 }
 
@@ -195,16 +200,38 @@ function boothNumber(db: MockDb, boothId: string): number {
 
 // ---------------------------------------------------------------- Auth
 
-export function login(mobile: string, password: string, remember: boolean, device: string): LoginResponse {
+/**
+ * Whether another account with the same name already uses this password. Names may repeat, but
+ * name + password must identify one account so people can sign in with their name.
+ */
+function passwordTakenForName(db: MockDb, fullName: string, password: string, excludeId?: string): boolean {
+  const key = nameKey(fullName);
+  return db.admins.some((a) => a.id !== excludeId && nameKey(a.fullName) === key && checkPassword(db, a.id, password));
+}
+
+function failPasswordTaken(fullName: string, field: 'password' | 'newPassword'): never {
+  fail(400, 'VALIDATION', 'Please choose a different password.', { [field]: `Another account named "${fullName.trim().replace(/\s+/g, ' ')}" already uses this password. Choose a different one.` });
+}
+
+/** `identifier` is a mobile number or a full name. */
+export function login(identifier: string, password: string, remember: boolean, device: string): LoginResponse {
   const db = loadDb();
-  const number = normalizeMobile(mobile ?? '');
-  const admin = db.admins.find((a) => a.mobile === number);
-  if (!admin || !checkPassword(db, admin.id, password)) {
-    if (admin) {
-      addAudit(db, admin, 'Login failed', 'Auth', admin.id, 'Incorrect password', 'Failure');
+  const raw = (identifier ?? '').trim();
+  const candidates = isValidIndianMobile(raw)
+    ? db.admins.filter((a) => a.mobile === normalizeMobile(raw))
+    : db.admins.filter((a) => nameKey(a.fullName) === nameKey(raw));
+  const matches = candidates.filter((a) => checkPassword(db, a.id, password));
+  if (matches.length > 1) {
+    // Only possible after a rename; the mobile number is always unique.
+    fail(401, 'INVALID_CREDENTIALS', 'More than one account matches this name and password. Use your mobile number to sign in.');
+  }
+  const admin = matches[0];
+  if (!admin) {
+    if (candidates.length === 1) {
+      addAudit(db, candidates[0], 'Login failed', 'Auth', candidates[0].id, 'Incorrect password', 'Failure');
       saveDb();
     }
-    fail(401, 'INVALID_CREDENTIALS', 'Invalid mobile number or password.');
+    fail(401, 'INVALID_CREDENTIALS', 'Invalid mobile number, name or password.');
   }
   if (admin.status !== 'Active') fail(403, 'FORBIDDEN', 'This account has been deactivated. Contact the Super Admin.');
   const created = nowIso();
@@ -238,6 +265,7 @@ export function changePassword(token: string | null, currentPassword: string, ne
   if (!isValidPassword(newPassword)) {
     fail(400, 'VALIDATION', 'Password does not meet the requirements.', { newPassword: PASSWORD_RULES });
   }
+  if (passwordTakenForName(db, admin.fullName, newPassword, admin.id)) failPasswordTaken(admin.fullName, 'newPassword');
   db.passwords[admin.id] = hash(newPassword);
   db.sessions = db.sessions.filter((s) => s.adminId !== admin.id || s.token === token);
   addAudit(db, admin, 'Password changed', 'Auth', admin.id, 'Other sessions signed out');
@@ -273,71 +301,149 @@ export function revokeOtherSessions(token: string | null): number {
   return before - db.sessions.length;
 }
 
-// ---------------------------------------------------------------- Administrators
+// ---------------------------------------------------------------- Accounts (Super Admins, Corporators & BLOs)
 
-function validateAdminInput(db: MockDb, input: AdminInput, excludeId?: string): AdminInput {
+/** Corporators and Super Admins may manage BLOs; only Super Admins manage Super Admins and Corporators. */
+function requireManager(admin: Admin): void {
+  if (admin.role !== 'SUPER_ADMIN' && admin.role !== 'CORPORATOR') fail(403, 'FORBIDDEN', 'You do not have permission to manage accounts.');
+}
+
+/**
+ * Accounts the actor may see and manage: a Super Admin manages every other account, Super Admins included
+ * (their own account is changed from My Profile); a Corporator only its own BLOs.
+ */
+function manages(actor: Admin, target: Admin): boolean {
+  if (actor.role === 'SUPER_ADMIN') return target.id !== actor.id;
+  if (target.role === 'SUPER_ADMIN') return false;
+  return actor.role === 'CORPORATOR' && target.role === 'BLO' && target.corporatorId === actor.id;
+}
+
+function findManaged(db: MockDb, actor: Admin, id: string): Admin {
+  const target = db.admins.find((a) => a.id === id);
+  if (!target || !manages(actor, target)) fail(404, 'NOT_FOUND', 'Account not found.');
+  return target;
+}
+
+/**
+ * Validates an account. Super Admins cover everything (no wards). Corporators cover whole wards (no booths).
+ * A BLO's wards must be inside its Corporator's wards, and its booths inside the chosen wards.
+ */
+function validateAdminInput(db: MockDb, input: AdminInput, role: ManagedRole, corporator: Admin | null, excludeId?: string): Required<AdminInput> {
   const errors: Record<string, string> = {};
   const fullName = (input.fullName ?? '').trim();
   if (fullName.length < 2) errors.fullName = 'Full name is required';
   if (!isValidIndianMobile(input.mobile ?? '')) errors.mobile = 'Enter a valid 10-digit Indian mobile number';
   const mobile = normalizeMobile(input.mobile ?? '');
   if (!errors.mobile && db.admins.some((a) => a.id !== excludeId && a.mobile === mobile)) {
-    errors.mobile = 'Another administrator already uses this mobile number';
+    errors.mobile = 'Another account already uses this mobile number';
   }
-  const wardIds = [...new Set(input.wardIds ?? [])];
-  if (!wardIds.length) errors.wardIds = 'Assign at least one ward';
-  if (wardIds.some((id) => !db.wards.some((w) => w.id === id))) errors.wardIds = 'One or more wards do not exist';
-  const boothIds = [...new Set(input.boothIds ?? [])];
+  const wardIds = role === 'SUPER_ADMIN' ? [] : [...new Set(input.wardIds ?? [])];
+  if (!wardIds.length) {
+    if (role !== 'SUPER_ADMIN') errors.wardIds = 'Assign at least one ward';
+  } else if (wardIds.some((id) => !db.wards.some((w) => w.id === id))) errors.wardIds = 'One or more wards do not exist';
+  else if (role === 'BLO' && corporator && wardIds.some((id) => !corporator.wardIds.includes(id))) {
+    errors.wardIds = `Choose wards assigned to ${corporator.id}`;
+  }
+  const location = role === 'CORPORATOR' ? (input.location ?? '').trim() : '';
+  if (location.length > 200) errors.location = 'Location is too long (200 characters at most)';
+  const boothIds = role === 'BLO' ? [...new Set(input.boothIds ?? [])] : [];
   if (boothIds.some((id) => !wardIds.includes(boothWardOf(db)(id) ?? ''))) errors.boothIds = 'Booths must belong to the selected wards';
   if (Object.keys(errors).length) fail(400, 'VALIDATION', 'Please correct the highlighted fields.', errors);
-  return { fullName, mobile, wardIds, boothIds };
+  return { fullName, mobile, location, wardIds, boothIds };
+}
+
+/** After a Corporator loses wards, its BLOs lose those wards and the booths in them. */
+function trimBlosToCorporator(db: MockDb, corporator: Admin): void {
+  const wardOf = boothWardOf(db);
+  for (const blo of db.admins.filter((a) => a.role === 'BLO' && a.corporatorId === corporator.id)) {
+    blo.wardIds = blo.wardIds.filter((w) => corporator.wardIds.includes(w));
+    blo.boothIds = blo.boothIds.filter((b) => corporator.wardIds.includes(wardOf(b) ?? ''));
+  }
+}
+
+/** C-2 -> [2, 0]; C-2-BLO3 -> [2, 3]; SA-1 -> [1, 0] */
+function adminNumber(id: string): number[] {
+  const m = /^[A-Z]+-(\d+)(?:-BLO(\d+))?$/.exec(id);
+  return m ? [Number(m[1]), Number(m[2] ?? 0)] : [0, 0];
+}
+
+export function compareAdminIds(a: string, b: string): number {
+  const [a1, a2] = adminNumber(a);
+  const [b1, b2] = adminNumber(b);
+  return a1 - b1 || a2 - b2;
 }
 
 export function listAdmins(token: string | null, q: AdminQuery = {}): Paginated<Admin> {
   const db = loadDb();
-  requireSuper(authenticate(db, token));
+  const actor = authenticate(db, token);
+  requireManager(actor);
   const search = (q.search ?? '').trim().toLowerCase();
-  let items = db.admins.filter((a) => a.role === 'BL_ADMIN');
+  let items = db.admins.filter((a) => manages(actor, a));
+  if (q.role) items = items.filter((a) => a.role === q.role);
+  if (q.corporatorId) items = items.filter((a) => a.corporatorId === q.corporatorId);
   if (search) items = items.filter((a) => a.id.toLowerCase().includes(search) || a.fullName.toLowerCase().includes(search) || a.mobile.includes(search));
   if (q.wardId) items = items.filter((a) => a.wardIds.includes(q.wardId!));
   if (q.status) items = items.filter((a) => a.status === q.status);
   const dir = q.sortDir === 'desc' ? -1 : 1;
   const sortBy = q.sortBy ?? 'id';
   items = [...items].sort((a, b) => {
-    if (sortBy === 'id') return (Number(a.id.split('-')[1]) - Number(b.id.split('-')[1])) * dir;
+    if (sortBy === 'id') return compareAdminIds(a.id, b.id) * dir;
     return String(a[sortBy]).localeCompare(String(b[sortBy])) * dir;
   });
   return paginate(items, q.page, q.pageSize);
 }
 
-/** Lightweight list used by filters (Super Admin only). */
-export function adminOptions(token: string | null): Pick<Admin, 'id' | 'fullName'>[] {
+/** Lightweight list for filters and pickers: every account for the Super Admin; a Corporator and its BLOs otherwise. */
+export function adminOptions(token: string | null): AdminOption[] {
   const db = loadDb();
-  requireSuper(authenticate(db, token));
-  return db.admins.map((a) => ({ id: a.id, fullName: a.fullName }));
+  const actor = authenticate(db, token);
+  requireManager(actor);
+  return db.admins
+    .filter((a) => actor.role === 'SUPER_ADMIN' || a.id === actor.id || manages(actor, a))
+    .sort((a, b) => compareAdminIds(a.id, b.id))
+    .map((a) => ({ id: a.id, fullName: a.fullName, role: a.role, corporatorId: a.corporatorId, wardIds: [...a.wardIds] }));
 }
 
 export function getAdmin(token: string | null, id: string): Admin {
   const db = loadDb();
-  requireSuper(authenticate(db, token));
-  const admin = db.admins.find((a) => a.id === id);
-  if (!admin) fail(404, 'NOT_FOUND', 'Administrator not found.');
-  return { ...admin };
+  const actor = authenticate(db, token);
+  requireManager(actor);
+  return { ...findManaged(db, actor, id) };
 }
 
 export function createAdmin(token: string | null, input: AdminCreateInput): Admin {
   const db = loadDb();
   const actor = authenticate(db, token);
-  requireSuper(actor);
+  requireManager(actor);
+  const role = input.role;
+  if (role !== 'SUPER_ADMIN' && role !== 'CORPORATOR' && role !== 'BLO') fail(400, 'VALIDATION', 'Choose an account role.', { role: 'Choose an account role' });
+  if (role !== 'BLO' && actor.role !== 'SUPER_ADMIN') fail(403, 'FORBIDDEN', 'Only a Super Admin can create Super Admins and Corporators.');
+  let corporator: Admin | null = null;
+  if (role === 'BLO') {
+    corporator = actor.role === 'CORPORATOR' ? actor : db.admins.find((a) => a.id === input.corporatorId && a.role === 'CORPORATOR') ?? null;
+    if (!corporator) fail(400, 'VALIDATION', 'Please correct the highlighted fields.', { corporatorId: 'Select a Corporator' });
+  }
   if (!isValidPassword(input.password ?? '')) {
     fail(400, 'VALIDATION', 'Please correct the highlighted fields.', { password: PASSWORD_RULES });
   }
-  const clean = validateAdminInput(db, input);
-  db.counters.admin++;
-  const admin: Admin = { id: `BL-${db.counters.admin}`, role: 'BL_ADMIN', status: 'Active', createdAt: nowIso(), ...clean };
+  const clean = validateAdminInput(db, input, role, corporator);
+  if (passwordTakenForName(db, clean.fullName, input.password)) failPasswordTaken(clean.fullName, 'password');
+  let id: string;
+  if (corporator) {
+    db.bloCounters[corporator.id] = (db.bloCounters[corporator.id] ?? 0) + 1;
+    id = `${corporator.id}-BLO${db.bloCounters[corporator.id]}`;
+  } else if (role === 'SUPER_ADMIN') {
+    db.counters.superAdmin++;
+    id = `SA-${db.counters.superAdmin}`;
+  } else {
+    db.counters.corporator++;
+    id = `C-${db.counters.corporator}`;
+  }
+  const admin: Admin = { id, role, corporatorId: corporator?.id ?? null, status: 'Active', createdAt: nowIso(), ...clean };
   db.admins.push(admin);
   db.passwords[admin.id] = hash(input.password);
-  addAudit(db, actor, 'Administrator created', 'Admin', admin.id, `${admin.fullName}, wards ${wardList(db, admin.wardIds)}`);
+  const action = role === 'SUPER_ADMIN' ? 'Super Admin created' : role === 'CORPORATOR' ? 'Corporator created' : 'BLO created';
+  addAudit(db, actor, action, 'Admin', admin.id, role === 'SUPER_ADMIN' ? admin.fullName : `${admin.fullName}, wards ${wardList(db, admin.wardIds)}`);
   saveDb();
   return { ...admin };
 }
@@ -349,16 +455,18 @@ function wardList(db: MockDb, ids: string[]): string {
 export function updateAdmin(token: string | null, id: string, input: AdminInput): Admin {
   const db = loadDb();
   const actor = authenticate(db, token);
-  requireSuper(actor);
-  const admin = db.admins.find((a) => a.id === id);
-  if (!admin || admin.role !== 'BL_ADMIN') fail(404, 'NOT_FOUND', 'Administrator not found.');
-  const clean = validateAdminInput(db, input, id);
+  requireManager(actor);
+  const admin = findManaged(db, actor, id);
+  const corporator = admin.role === 'BLO' ? db.admins.find((a) => a.id === admin.corporatorId) ?? null : null;
+  const clean = validateAdminInput(db, input, admin.role as ManagedRole, corporator, id);
   const changes: string[] = [];
   if (admin.fullName !== clean.fullName) changes.push(`name "${admin.fullName}" → "${clean.fullName}"`);
   if (admin.mobile !== clean.mobile) changes.push('mobile changed');
+  if (admin.location !== clean.location) changes.push(`location "${admin.location}" → "${clean.location}"`);
   const assignmentChanged = admin.wardIds.slice().sort().join() !== clean.wardIds.slice().sort().join() || admin.boothIds.slice().sort().join() !== clean.boothIds.slice().sort().join();
   Object.assign(admin, clean);
-  if (changes.length) addAudit(db, actor, 'Administrator updated', 'Admin', id, changes.join('; '));
+  if (admin.role === 'CORPORATOR') trimBlosToCorporator(db, admin);
+  if (changes.length) addAudit(db, actor, 'Account updated', 'Admin', id, changes.join('; '));
   if (assignmentChanged) addAudit(db, actor, 'Assignment changed', 'Admin', id, `Wards ${wardList(db, clean.wardIds)}; booths ${clean.boothIds.length ? clean.boothIds.map((b) => boothNumber(db, b)).join(', ') : 'all in ward'}`);
   saveDb();
   return { ...admin };
@@ -367,29 +475,29 @@ export function updateAdmin(token: string | null, id: string, input: AdminInput)
 export function setAdminStatus(token: string | null, id: string, status: AccountStatus): Admin {
   const db = loadDb();
   const actor = authenticate(db, token);
-  requireSuper(actor);
-  const admin = db.admins.find((a) => a.id === id);
-  if (!admin || admin.role !== 'BL_ADMIN') fail(404, 'NOT_FOUND', 'Administrator not found.');
+  requireManager(actor);
+  const admin = findManaged(db, actor, id);
+  if (status !== 'Active' && status !== 'Inactive') fail(400, 'VALIDATION', 'Choose Active or Inactive.');
   if (admin.status !== status) {
     admin.status = status;
     if (status === 'Inactive') db.sessions = db.sessions.filter((s) => s.adminId !== id);
-    addAudit(db, actor, status === 'Active' ? 'Administrator activated' : 'Administrator deactivated', 'Admin', id, admin.fullName);
+    addAudit(db, actor, status === 'Active' ? 'Account activated' : 'Account deactivated', 'Admin', id, admin.fullName);
     saveDb();
   }
   return { ...admin };
 }
 
-/** Super Admin sets a new password for a BL Admin; that admin is signed out everywhere. */
+/** Sets a new password for a managed account; that account is signed out everywhere. */
 export function setAdminPassword(token: string | null, id: string, password: string): void {
   const db = loadDb();
   const actor = authenticate(db, token);
-  requireSuper(actor);
-  const admin = db.admins.find((a) => a.id === id);
-  if (!admin || admin.role !== 'BL_ADMIN') fail(404, 'NOT_FOUND', 'Administrator not found.');
+  requireManager(actor);
+  const admin = findManaged(db, actor, id);
   if (!isValidPassword(password ?? '')) fail(400, 'VALIDATION', 'Password does not meet the requirements.', { password: PASSWORD_RULES });
+  if (passwordTakenForName(db, admin.fullName, password, id)) failPasswordTaken(admin.fullName, 'password');
   db.passwords[id] = hash(password);
   db.sessions = db.sessions.filter((s) => s.adminId !== id);
-  addAudit(db, actor, 'Password changed', 'Admin', id, `Password for ${admin.fullName} changed by Super Admin`);
+  addAudit(db, actor, 'Password changed', 'Admin', id, `Password for ${admin.fullName} changed by ${actor.id}`);
   saveDb();
 }
 
@@ -407,20 +515,21 @@ export function listWards(token: string | null): { wards: Ward[]; booths: Booth[
 export function wardSummaries(token: string | null): WardSummary[] {
   const db = loadDb();
   requireSuper(authenticate(db, token));
-  const bl = db.admins.filter((a) => a.role === 'BL_ADMIN');
+  const corporators = db.admins.filter((a) => a.role === 'CORPORATOR');
+  const blos = db.admins.filter((a) => a.role === 'BLO');
   return [...db.wards]
     .sort((a, b) => a.number - b.number)
     .map((w) => ({
       ...w,
       voterCount: db.voters.filter((v) => v.wardId === w.id).length,
-      adminIds: bl.filter((a) => a.wardIds.includes(w.id)).map((a) => a.id),
+      adminIds: corporators.filter((a) => a.wardIds.includes(w.id)).map((a) => a.id),
       booths: db.booths
         .filter((b) => b.wardId === w.id)
         .sort((a, b) => a.number - b.number)
         .map((b) => ({
           ...b,
           voterCount: db.voters.filter((v) => v.boothId === b.id).length,
-          adminIds: bl.filter((a) => a.boothIds.includes(b.id)).map((a) => a.id),
+          adminIds: blos.filter((a) => a.boothIds.includes(b.id)).map((a) => a.id),
         })),
     }));
 }
@@ -507,15 +616,14 @@ export function updateBooth(token: string | null, id: string, input: { number: n
   return { ...booth };
 }
 
-/** Sets exactly which BL admins are assigned to a ward. Removing a ward also removes its booth assignments. */
+/** Sets exactly which Corporators are assigned to a ward. Removing a Corporator also removes that ward from its BLOs. */
 export function setWardAdmins(token: string | null, wardId: string, adminIds: string[]): void {
   const db = loadDb();
   const actor = authenticate(db, token);
   requireSuper(actor);
   if (!db.wards.some((w) => w.id === wardId)) fail(404, 'NOT_FOUND', 'Ward not found.');
-  const wardOf = boothWardOf(db);
   const changed: string[] = [];
-  for (const a of db.admins.filter((x) => x.role === 'BL_ADMIN')) {
+  for (const a of db.admins.filter((x) => x.role === 'CORPORATOR')) {
     const has = a.wardIds.includes(wardId);
     const want = adminIds.includes(a.id);
     if (want && !has) {
@@ -523,7 +631,7 @@ export function setWardAdmins(token: string | null, wardId: string, adminIds: st
       changed.push(`+${a.id}`);
     } else if (!want && has) {
       a.wardIds = a.wardIds.filter((w) => w !== wardId);
-      a.boothIds = a.boothIds.filter((b) => wardOf(b) !== wardId);
+      trimBlosToCorporator(db, a);
       changed.push(`-${a.id}`);
     }
   }
@@ -531,15 +639,20 @@ export function setWardAdmins(token: string | null, wardId: string, adminIds: st
   saveDb();
 }
 
-/** Sets which BL admins are limited to this booth. Assigning a booth also assigns its ward. */
+/** Sets which BLOs work this booth. Assigning a booth also assigns its ward; the BLO's Corporator must cover that ward. */
 export function setBoothAdmins(token: string | null, boothId: string, adminIds: string[]): void {
   const db = loadDb();
   const actor = authenticate(db, token);
   requireSuper(actor);
   const booth = db.booths.find((b) => b.id === boothId);
   if (!booth) fail(404, 'NOT_FOUND', 'Booth not found.');
+  const blos = db.admins.filter((x) => x.role === 'BLO');
+  const outside = blos.filter((a) => adminIds.includes(a.id) && !a.boothIds.includes(boothId) && !db.admins.find((c) => c.id === a.corporatorId)?.wardIds.includes(booth.wardId));
+  if (outside.length) {
+    fail(400, 'VALIDATION', `${outside.map((a) => a.id).join(', ')} cannot be assigned here: their Corporator is not assigned to ward ${wardNumber(db, booth.wardId)}.`);
+  }
   const changed: string[] = [];
-  for (const a of db.admins.filter((x) => x.role === 'BL_ADMIN')) {
+  for (const a of blos) {
     const has = a.boothIds.includes(boothId);
     const want = adminIds.includes(a.id);
     if (want && !has) {
@@ -596,18 +709,18 @@ function validateVoterInput(db: MockDb, input: VoterInput, excludeRecordId?: str
   };
 }
 
-function filterVoters(db: MockDb, admin: Admin, q: VoterQuery, latest: Map<string, DonationTransaction>): Voter[] {
+function filterVoters(db: MockDb, admin: Admin, q: VoterQuery, latest: Map<string, PaymentTransaction>): Voter[] {
   const search = (q.search ?? '').trim().toLowerCase();
   const digits = search.replace(/\D/g, '');
   return db.voters.filter((v) => {
-    const mine = covers(db, admin, v);
-    if (q.scope === 'mine' && !mine) return false;
+    // Corporators and BLOs only ever see voters in their own area.
+    if (!covers(db, admin, v)) return false;
     if (q.wardId && v.wardId !== q.wardId) return false;
     if (q.boothId && v.boothId !== q.boothId) return false;
     if (q.status && v.status !== q.status) return false;
-    if (q.donationStatus) {
+    if (q.paymentStatus) {
       const received = latest.has(v.recordId);
-      if ((q.donationStatus === 'Received') !== received) return false;
+      if ((q.paymentStatus === 'Received') !== received) return false;
     }
     if (search) {
       const hit =
@@ -667,7 +780,7 @@ export function getVoter(token: string | null, recordId: string): VoterDetail {
   const db = loadDb();
   const admin = authenticate(db, token);
   const voter = db.voters.find((v) => v.recordId === recordId);
-  if (!voter) fail(404, 'NOT_FOUND', 'Voter not found.');
+  if (!voter || !covers(db, admin, voter)) fail(404, 'NOT_FOUND', 'Voter not found.');
   const item = toListItem(db, admin, voter, latestSuccessByVoter(db));
   const transactions = db.transactions
     .filter((t) => t.voterRecordId === recordId)
@@ -824,17 +937,17 @@ export function getSettings(token: string | null): SettingsResponse {
   };
 }
 
-export function updateSettings(token: string | null, input: Omit<DonationSettings, 'currency'>): SettingsResponse {
+export function updateSettings(token: string | null, input: Omit<PaymentSettings, 'currency'>): SettingsResponse {
   const db = loadDb();
   const actor = authenticate(db, token);
   requireSuper(actor);
   const amount = Number(input.defaultAmount);
-  if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_DONATION_AMOUNT) {
+  if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_PAYMENT_AMOUNT) {
     fail(400, 'VALIDATION', 'Enter a valid amount.', { defaultAmount: 'Enter a whole amount between ₹1 and ₹1,00,000' });
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.effectiveDate ?? '')) fail(400, 'VALIDATION', 'Enter a valid date.', { effectiveDate: 'Enter a valid date' });
   const prev = db.settings;
-  const next: DonationSettings = {
+  const next: PaymentSettings = {
     defaultAmount: amount,
     currency: 'INR',
     effectiveDate: input.effectiveDate,
@@ -857,15 +970,15 @@ export function updateSettings(token: string | null, input: Omit<DonationSetting
         summary: changes.join('; '),
       });
     }
-    addAudit(db, actor, 'Donation settings changed', 'Settings', 'donation-settings', changes.join('; '));
+    addAudit(db, actor, 'Payment settings changed', 'Settings', 'payment-settings', changes.join('; '));
     saveDb();
   }
   return getSettings(token);
 }
 
-// ---------------------------------------------------------------- Donations
+// ---------------------------------------------------------------- Payments
 
-export function donationContext(token: string | null): DonationContext {
+export function paymentContext(token: string | null): PaymentContext {
   const db = loadDb();
   authenticate(db, token);
   return {
@@ -874,7 +987,7 @@ export function donationContext(token: string | null): DonationContext {
   };
 }
 
-export function recordDonation(token: string | null, input: DonationInput): DonationTransaction {
+export function recordPayment(token: string | null, input: PaymentInput): PaymentTransaction {
   const db = loadDb();
   const admin = authenticate(db, token);
 
@@ -887,26 +1000,27 @@ export function recordDonation(token: string | null, input: DonationInput): Dona
 
   const voter = db.voters.find((v) => v.recordId === input.voterRecordId);
   if (!voter) fail(404, 'NOT_FOUND', 'Voter not found.');
+  if (!covers(db, admin, voter)) fail(403, 'FORBIDDEN', 'This voter is outside your assigned area.');
 
   const errors: Record<string, string> = {};
   const amount = Number(input.amount);
   const receiverName = (input.receiverName ?? '').trim();
   const receiverMobile = (input.receiverMobile ?? '').trim();
-  if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_DONATION_AMOUNT) errors.amount = 'Enter a whole amount between ₹1 and ₹1,00,000';
+  if (!Number.isInteger(amount) || amount <= 0 || amount > MAX_PAYMENT_AMOUNT) errors.amount = 'Enter a whole amount between ₹1 and ₹1,00,000';
   if (receiverName.length < 2) errors.receiverName = 'Receiver name is required';
   if (!isValidIndianMobile(receiverMobile)) errors.receiverMobile = 'Enter a valid 10-digit Indian mobile number';
-  const ctx = donationContext(token);
+  const ctx = paymentContext(token);
   if (!errors.amount && !ctx.amountEditable && amount !== ctx.suggestedAmount) {
     errors.amount = `Amount must be ₹${ctx.suggestedAmount.toLocaleString('en-IN')}`;
   }
   if (Object.keys(errors).length) fail(400, 'VALIDATION', 'Please correct the highlighted fields.', errors);
 
-  // One successful donation per voter. A cancelled or reversed one does not count.
+  // One successful payment per voter. A cancelled or reversed one does not count.
   const existing = db.transactions.find((t) => t.voterRecordId === voter.recordId && t.status === 'Success');
-  if (existing) fail(409, 'CONFLICT', `This voter has already received a donation (${existing.id}).`);
+  if (existing) fail(409, 'CONFLICT', `This voter has already received a payment (${formatInr(existing.amount)} to ${existing.receiverName}).`);
 
   db.counters.txn++;
-  const tx: DonationTransaction = {
+  const tx: PaymentTransaction = {
     id: `TXN-${pad(db.counters.txn, 6)}`,
     voterRecordId: voter.recordId,
     voterId: voter.voterId,
@@ -923,17 +1037,17 @@ export function recordDonation(token: string | null, input: DonationInput): Dona
   };
   db.transactions.push(tx);
   if (input.idempotencyKey) db.idempotency[input.idempotencyKey] = tx.id;
-  addAudit(db, admin, 'Donation recorded', 'Donation', tx.id, `₹${amount.toLocaleString('en-IN')} to ${receiverName} for voter ${voter.voterId}`);
+  addAudit(db, admin, 'Payment recorded', 'Payment', tx.id, `₹${amount.toLocaleString('en-IN')} to ${receiverName} for voter ${voter.voterId}`);
   saveDb();
   return { ...tx };
 }
 
-/** Every admin may view every transaction; kept as one place to tighten the rule later. */
-function transactionVisible(_db: MockDb, _admin: Admin, _t: DonationTransaction): boolean {
-  return true;
+/** The Super Admin sees every transaction; others see payments for voters in their area (where the voter was when paid). */
+function transactionVisible(db: MockDb, admin: Admin, t: PaymentTransaction): boolean {
+  return covers(db, admin, t);
 }
 
-function filterTransactions(db: MockDb, admin: Admin, q: DonationQuery): DonationTransaction[] {
+function filterTransactions(db: MockDb, admin: Admin, q: PaymentQuery): PaymentTransaction[] {
   const search = (q.search ?? '').trim().toLowerCase();
   return db.transactions
     .filter((t) => {
@@ -945,7 +1059,6 @@ function filterTransactions(db: MockDb, admin: Admin, q: DonationQuery): Donatio
       if (q.status && t.status !== q.status) return false;
       if (search) {
         return (
-          t.id.toLowerCase().includes(search) ||
           t.voterName.toLowerCase().includes(search) ||
           t.voterId.toLowerCase().includes(search) ||
           t.receiverName.toLowerCase().includes(search) ||
@@ -962,22 +1075,22 @@ function filterTransactions(db: MockDb, admin: Admin, q: DonationQuery): Donatio
     });
 }
 
-export function listDonations(token: string | null, q: DonationQuery = {}): Paginated<DonationTransaction> {
+export function listPayments(token: string | null, q: PaymentQuery = {}): Paginated<PaymentTransaction> {
   const db = loadDb();
   const admin = authenticate(db, token);
   return paginate(filterTransactions(db, admin, q).map((t) => ({ ...t })), q.page, q.pageSize);
 }
 
-export function exportDonations(token: string | null, q: DonationQuery = {}): DonationTransaction[] {
+export function exportPayments(token: string | null, q: PaymentQuery = {}): PaymentTransaction[] {
   const db = loadDb();
   const admin = authenticate(db, token);
   const rows = filterTransactions(db, admin, q).map((t) => ({ ...t }));
-  addAudit(db, admin, 'Donations exported', 'Export', 'donations', `${rows.length} transactions`);
+  addAudit(db, admin, 'Payments exported', 'Export', 'payments', `${rows.length} transactions`);
   saveDb();
   return rows;
 }
 
-export function getDonation(token: string | null, id: string): TransactionDetail {
+export function getPayment(token: string | null, id: string): TransactionDetail {
   const db = loadDb();
   const admin = authenticate(db, token);
   const tx = db.transactions.find((t) => t.id === id);
@@ -986,7 +1099,7 @@ export function getDonation(token: string | null, id: string): TransactionDetail
   return { transaction: { ...tx }, audit };
 }
 
-export function cancelDonation(token: string | null, id: string, input: CancelDonationInput): DonationTransaction {
+export function cancelPayment(token: string | null, id: string, input: CancelPaymentInput): PaymentTransaction {
   const db = loadDb();
   const actor = authenticate(db, token);
   requireSuper(actor);
@@ -998,7 +1111,7 @@ export function cancelDonation(token: string | null, id: string, input: CancelDo
   if (input.kind !== 'Cancelled' && input.kind !== 'Reversed') fail(400, 'VALIDATION', 'Choose cancel or reverse.');
   tx.status = input.kind;
   tx.statusReason = reason;
-  addAudit(db, actor, input.kind === 'Cancelled' ? 'Donation cancelled' : 'Donation reversed', 'Donation', id, reason);
+  addAudit(db, actor, input.kind === 'Cancelled' ? 'Payment cancelled' : 'Payment reversed', 'Payment', id, reason);
   saveDb();
   return { ...tx };
 }
@@ -1011,7 +1124,7 @@ function scopedVoters(db: MockDb, admin: Admin, f: ReportFilters): Voter[] {
   );
 }
 
-function scopedSuccessTx(db: MockDb, admin: Admin, voterIds: Set<string>, f: ReportFilters): DonationTransaction[] {
+function scopedSuccessTx(db: MockDb, admin: Admin, voterIds: Set<string>, f: ReportFilters): PaymentTransaction[] {
   return db.transactions.filter(
     (t) =>
       t.status === 'Success' &&
@@ -1021,7 +1134,7 @@ function scopedSuccessTx(db: MockDb, admin: Admin, voterIds: Set<string>, f: Rep
   );
 }
 
-function groupRows(voters: Voter[], txs: DonationTransaction[], keyOf: (v: { wardId: string; boothId: string }) => string, labelOf: (key: string) => string, keys: string[]): GroupRow[] {
+function groupRows(voters: Voter[], txs: PaymentTransaction[], keyOf: (v: { wardId: string; boothId: string }) => string, labelOf: (key: string) => string, keys: string[]): GroupRow[] {
   const rows = new Map<string, GroupRow>();
   for (const k of keys) rows.set(k, { key: k, label: labelOf(k), voters: 0, active: 0, notActive: 0, shifted: 0, received: 0, notReceived: 0, transactions: 0, amount: 0 });
   const receivedIds = new Set(txs.map((t) => t.voterRecordId));
@@ -1101,7 +1214,7 @@ export function dashboard(token: string | null, f: ReportFilters = {}): Dashboar
     cursor.setDate(cursor.getDate() + 1);
   }
 
-  // Everything this admin recorded, including donations to voters outside their wards.
+  // Everything this admin recorded, including payments to voters outside their wards.
   const mine = db.transactions.filter((t) => t.status === 'Success' && t.adminId === admin.id && inDateRange(t.timestamp, f.from, f.to));
   const visibleRecent = db.transactions
     .filter(
@@ -1120,7 +1233,12 @@ export function dashboard(token: string | null, f: ReportFilters = {}): Dashboar
     .slice(0, 8);
 
   return {
-    totalAdmins: isSuper ? db.admins.filter((a) => a.role === 'BL_ADMIN').length : null,
+    totalCorporators: isSuper ? db.admins.filter((a) => a.role === 'CORPORATOR').length : null,
+    totalBlos: isSuper
+      ? db.admins.filter((a) => a.role === 'BLO').length
+      : admin.role === 'CORPORATOR'
+        ? db.admins.filter((a) => a.role === 'BLO' && a.corporatorId === admin.id).length
+        : null,
     totalVoters: voters.length,
     totalWards: byWard.length,
     totalBooths: isSuper ? db.booths.filter((b) => (!f.wardId || b.wardId === f.wardId) && (!f.boothId || b.id === f.boothId)).length : byBooth.length,
@@ -1146,7 +1264,7 @@ export function report(token: string | null, f: ReportFilters = {}): ReportData 
   const db = loadDb();
   const admin = authenticate(db, token);
   const { voters, txs, receivedVoters, byWard, byBooth, byAdmin } = buildAggregates(db, admin, f);
-  const group = (keyOf: (t: DonationTransaction) => string) => {
+  const group = (keyOf: (t: PaymentTransaction) => string) => {
     const m = new Map<string, { transactions: number; amount: number; voters: Set<string> }>();
     for (const t of txs) {
       const k = keyOf(t);
@@ -1171,7 +1289,8 @@ export function report(token: string | null, f: ReportFilters = {}): ReportData 
     },
     byWard,
     byBooth,
-    byAdmin: admin.role === 'SUPER_ADMIN' ? byAdmin : byAdmin.filter((a) => a.adminId === admin.id),
+    // Super Admin: everyone. Corporator: itself and its BLOs. BLO: itself.
+    byAdmin: byAdmin.filter((a) => admin.role === 'SUPER_ADMIN' || a.adminId === admin.id || (admin.role === 'CORPORATOR' && a.adminId.startsWith(`${admin.id}-BLO`))),
     daily: group((t) => localDate(t.timestamp)).map(([date, e]) => ({ date, transactions: e.transactions, uniqueVoters: e.voters.size, amount: e.amount })),
     monthly: group((t) => localDate(t.timestamp).slice(0, 7)).map(([month, e]) => ({ month, transactions: e.transactions, uniqueVoters: e.voters.size, amount: e.amount })),
   };
@@ -1222,12 +1341,12 @@ export function notifications(token: string | null): Notification[] {
     .filter((t) => t.adminId !== admin.id && covers(db, admin, t))
     .map((t) => ({
       id: t.id,
-      title: t.status === 'Success' ? `Donation recorded by ${t.adminId}` : `Donation ${t.status.toLowerCase()}`,
+      title: t.status === 'Success' ? `Payment recorded by ${t.adminId}` : `Payment ${t.status.toLowerCase()}`,
       body: `${t.voterName} (${t.voterId}) · ₹${t.amount.toLocaleString('en-IN')}`,
       timestamp: t.timestamp,
     }));
   const fromSettings = db.audit
     .filter((a) => a.entity === 'Settings')
-    .map((a) => ({ id: a.id, title: 'Donation settings updated', body: a.summary, timestamp: a.timestamp }));
+    .map((a) => ({ id: a.id, title: 'Payment settings updated', body: a.summary, timestamp: a.timestamp }));
   return [...fromTx, ...fromSettings].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 10);
 }

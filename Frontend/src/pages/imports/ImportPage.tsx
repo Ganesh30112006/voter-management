@@ -9,13 +9,14 @@ import { useQuery } from '../../hooks/useQuery';
 import { useToast } from '../../hooks/useToast';
 import { useWards } from '../../hooks/useWards';
 import { errorMessage } from '../../services/apiError';
-import { ACCEPT_ATTR, downloadTemplate, importService, readWorkbook, sheetRows, validateImportFile } from '../../services/importService';
+import { ACCEPT_ATTR, downloadTemplate, hasDataRows, ImportFileError, importService, readImportFile, sheetRows, validateImportFile } from '../../services/importService';
 import { VOTER_STATUSES, type ImportResult } from '../../types';
 import { downloadCsv } from '../../utils/download';
 import { formatNumber } from '../../utils/format';
 import {
   autoDetectMapping,
   extractRows,
+  findHeaderRow,
   IMPORT_FIELDS,
   mappingErrors,
   validateRows,
@@ -25,6 +26,7 @@ import {
   type RowValues,
   type ValidatedRow,
 } from '../../utils/importParser';
+import { rollRows, type ElectoralRoll } from '../../utils/pdfLayout';
 import './ImportPage.css';
 
 type Step = 'upload' | 'map' | 'preview' | 'importing' | 'done';
@@ -44,6 +46,9 @@ export function ImportPage() {
   const [dragOver, setDragOver] = useState(false);
   const [workbook, setWorkbook] = useState<WorkBook | null>(null);
   const [sheet, setSheet] = useState('');
+  const [fromPdf, setFromPdf] = useState(false);
+  const [roll, setRoll] = useState<ElectoralRoll | null>(null);
+  const [rollChoice, setRollChoice] = useState({ wardId: '', boothId: '', status: '' });
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   const [edits, setEdits] = useState<Record<number, Partial<RowValues>>>({});
   const [tab, setTab] = useState<RowCategory>('valid');
@@ -53,9 +58,19 @@ export function ImportPage() {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<ImportResult | null>(null);
 
-  const sheetData = useMemo(() => (workbook && sheet ? sheetRows(workbook, sheet) : []), [workbook, sheet]);
-  const headers = sheetData[0] ?? [];
-  const dataRows = sheetData.slice(1);
+  const rollWard = wards.find((w) => w.id === rollChoice.wardId);
+  const rollBooth = booths.find((b) => b.id === rollChoice.boothId);
+  const sheetData = useMemo(() => {
+    if (roll) return rollRows(roll, rollWard ? String(rollWard.number) : '', rollBooth ? String(rollBooth.number) : '', rollChoice.status);
+    return workbook && sheet ? sheetRows(workbook, sheet) : [];
+  }, [workbook, sheet, roll, rollWard, rollBooth, rollChoice.status]);
+  const headerIndex = useMemo(() => findHeaderRow(sheetData), [sheetData]);
+  const headers = sheetData[headerIndex] ?? [];
+  const dataRows = sheetData.slice(headerIndex + 1);
+  const dataRowCount = dataRows.filter((r) => r.some((c) => c.trim() !== '')).length;
+  const sampleRow = dataRows.find((r) => r.some((c) => c.trim() !== ''));
+  // Spreadsheet rows keep their real row numbers; PDF voters are numbered from 1.
+  const firstRowNumber = roll || fromPdf ? 1 : headerIndex + 2;
 
   // Re-detect the mapping only when a different sheet is loaded.
   useEffect(() => {
@@ -64,14 +79,14 @@ export function ImportPage() {
 
   const validated = useMemo<ValidatedRow[]>(() => {
     if (!mapping || step === 'upload' || step === 'map' || !ctxQuery.data) return [];
-    const raw = extractRows(dataRows, mapping).map((r) => ({ ...r, values: { ...r.values, ...edits[r.rowNumber] } }));
+    const raw = extractRows(dataRows, mapping, firstRowNumber).map((r) => ({ ...r, values: { ...r.values, ...edits[r.rowNumber] } }));
     return validateRows(raw, {
       wards,
       booths,
       existingVoterIds: new Set(ctxQuery.data.existingVoterIds),
       existingHouseholds: new Map(ctxQuery.data.households),
     });
-  }, [mapping, step, ctxQuery.data, sheetData, edits, wards, booths]); // eslint-disable-line react-hooks/exhaustive-deps -- dataRows derives from sheetData
+  }, [mapping, step, ctxQuery.data, sheetData, edits, wards, booths]); // eslint-disable-line react-hooks/exhaustive-deps -- dataRows and firstRowNumber derive from sheetData
 
   const counts = useMemo(() => {
     const c = { valid: 0, invalid: 0, duplicate: 0 };
@@ -89,6 +104,9 @@ export function ImportPage() {
     setFileError(null);
     setWorkbook(null);
     setSheet('');
+    setFromPdf(false);
+    setRoll(null);
+    setRollChoice({ wardId: '', boothId: '', status: '' });
     setMapping(null);
     setEdits({});
     setTab('valid');
@@ -107,19 +125,30 @@ export function ImportPage() {
         setFileError(problem);
         return;
       }
-      const wb = await readWorkbook(f);
-      const firstWithData = wb.SheetNames.find((n) => sheetRows(wb, n).length > 1) ?? wb.SheetNames[0];
-      if (!firstWithData || sheetRows(wb, firstWithData).length < 2) {
-        setFileError('No data rows found. The first row must be the column headings, followed by voter rows.');
-        return;
+      const source = await readImportFile(f);
+      if (source.kind === 'roll') {
+        setWorkbook(null);
+        setSheet('');
+        setFromPdf(true);
+        setRoll(source.roll);
+        setRollChoice({ wardId: '', boothId: '', status: '' });
+      } else {
+        const wb = source.workbook;
+        const firstWithData = wb.SheetNames.find((n) => hasDataRows(sheetRows(wb, n))) ?? wb.SheetNames[0];
+        if (!firstWithData || !hasDataRows(sheetRows(wb, firstWithData))) {
+          setFileError('No data rows found. The file needs a row of column headings, followed by voter rows.');
+          return;
+        }
+        setRoll(null);
+        setFromPdf(source.fromPdf);
+        setWorkbook(wb);
+        setSheet(firstWithData);
       }
       setFile(f);
-      setWorkbook(wb);
-      setSheet(firstWithData);
       setEdits({});
       setStep('map');
-    } catch {
-      setFileError('The file could not be read. Make sure it is a valid Excel or CSV file.');
+    } catch (e) {
+      setFileError(e instanceof ImportFileError ? e.message : 'The file could not be read. Make sure it is a valid Excel, CSV or PDF file.');
     } finally {
       setReading(false);
       if (inputRef.current) inputRef.current.value = '';
@@ -188,7 +217,7 @@ export function ImportPage() {
     <>
       <PageHeader
         title="Import Voters"
-        description="Upload an Excel (.xlsx, .xls) or CSV file. Every row is checked before anything is saved."
+        description="Upload an Excel (.xlsx, .xls), CSV or PDF file. Every row is checked before anything is saved."
         actions={
           <button type="button" className="btn btn-secondary" onClick={downloadTemplate}>
             <Download size={16} aria-hidden="true" /> Download template
@@ -238,7 +267,8 @@ export function ImportPage() {
                 if (f) acceptFile(f);
               }}
             />
-            <p className="small muted">Accepted: .xlsx, .xls, .csv · up to 10 MB · PDF, Word and images are rejected</p>
+            <p className="small muted">Accepted: .xlsx, .xls, .csv, .pdf · up to 10 MB</p>
+            <p className="small muted">PDF: a typed table with column headings, or an Election Commission electoral roll. Scanned PDFs cannot be read.</p>
           </div>
           {fileError && (
             <div className="alert alert-error" role="alert" style={{ marginTop: 12 }}>
@@ -249,16 +279,127 @@ export function ImportPage() {
         </div>
       )}
 
+      {step === 'map' && mapping && roll && (
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <h2>Electoral roll</h2>
+              <p className="small muted">
+                {file?.name} · {formatNumber(roll.records.length)} voters found. Voter ID (EPIC), name and house number were read from the PDF.
+              </p>
+            </div>
+          </div>
+          <div className="card-body stack">
+            {roll.unreadBoxes > 0 && (
+              <div className="alert alert-warning">
+                <AlertTriangle size={18} aria-hidden="true" />
+                {roll.unreadBoxes === 1 ? '1 voter box' : `${formatNumber(roll.unreadBoxes)} voter boxes`} had no readable EPIC number and{' '}
+                {roll.unreadBoxes === 1 ? 'was' : 'were'} left out. Add them by hand or from Excel.
+              </div>
+            )}
+            <p className="small">
+              The roll has no ward or status. Choose them for all {formatNumber(roll.records.length)} voters; you can still correct single rows in the next step.
+              {roll.partNumber !== null && ` The PDF says Part No. ${roll.partNumber}.`}
+            </p>
+            <div className="mapping-grid">
+              <label className="field">
+                <span className="field-label">
+                  Ward<span className="req" aria-hidden="true">*</span>
+                </span>
+                <select
+                  className="select"
+                  value={rollChoice.wardId}
+                  onChange={(e) => {
+                    const wardId = e.target.value;
+                    // The roll's part number is usually the booth number.
+                    const match = booths.find((b) => b.wardId === wardId && b.number === roll.partNumber);
+                    setRollChoice({ ...rollChoice, wardId, boothId: match?.id ?? '' });
+                    setEdits({});
+                  }}
+                >
+                  <option value="">Select ward</option>
+                  {wards.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      Ward {w.number} · {w.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field-label">
+                  Booth<span className="req" aria-hidden="true">*</span>
+                </span>
+                <select
+                  className="select"
+                  value={rollChoice.boothId}
+                  disabled={!rollChoice.wardId}
+                  onChange={(e) => {
+                    setRollChoice({ ...rollChoice, boothId: e.target.value });
+                    setEdits({});
+                  }}
+                >
+                  <option value="">{rollChoice.wardId ? 'Select booth' : 'Choose a ward first'}</option>
+                  {booths
+                    .filter((b) => b.wardId === rollChoice.wardId)
+                    .map((b) => (
+                      <option key={b.id} value={b.id}>
+                        Booth {b.number} · {b.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label className="field">
+                <span className="field-label">
+                  Status<span className="req" aria-hidden="true">*</span>
+                </span>
+                <select
+                  className="select"
+                  value={rollChoice.status}
+                  onChange={(e) => {
+                    setRollChoice({ ...rollChoice, status: e.target.value });
+                    setEdits({});
+                  }}
+                >
+                  <option value="">Select status</option>
+                  {VOTER_STATUSES.map((st) => (
+                    <option key={st} value={st}>
+                      {st}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-secondary" onClick={reset}>
+              <RotateCcw size={16} aria-hidden="true" /> Choose another file
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!rollChoice.wardId || !rollChoice.boothId || !rollChoice.status || !wardsLoaded}
+              onClick={() => {
+                setTab('valid');
+                setPage(1);
+                setStep('preview');
+              }}
+            >
+              Validate rows
+            </button>
+          </div>
+        </div>
+      )}
+
       {step === 'map' && mapping && workbook && (
         <div className="card">
           <div className="card-header">
             <div>
               <h2>Map columns</h2>
               <p className="small muted">
-                {file?.name} · {formatNumber(dataRows.length)} data rows. Columns were matched automatically; adjust if needed.
+                {file?.name} · {formatNumber(dataRowCount)} {dataRowCount === 1 ? 'data row' : 'data rows'}. Columns were matched automatically; adjust if needed.
               </p>
             </div>
-            {workbook.SheetNames.length > 1 && (
+            {workbook.SheetNames.length > 1 && !fromPdf && (
               <label className="field" style={{ minWidth: 180 }}>
                 <span className="field-label">Worksheet</span>
                 <select
@@ -279,7 +420,13 @@ export function ImportPage() {
             )}
           </div>
           <div className="card-body">
-            {dataRows.length === 0 && (
+            {fromPdf && (
+              <div className="alert alert-warning" style={{ marginBottom: 12 }}>
+                <AlertTriangle size={18} aria-hidden="true" />
+                Columns were read from the PDF page layout. Check the example under each field before validating.
+              </div>
+            )}
+            {dataRowCount === 0 && (
               <div className="alert alert-warning" style={{ marginBottom: 12 }}>
                 <AlertTriangle size={18} aria-hidden="true" />
                 This worksheet has no data rows.
@@ -304,7 +451,7 @@ export function ImportPage() {
                       </option>
                     ))}
                   </select>
-                  <span className="field-hint">{mapping[f.key] >= 0 ? `e.g. ${dataRows[0]?.[mapping[f.key]] || '(empty)'}` : f.required ? 'Required' : 'Optional'}</span>
+                  <span className="field-hint">{mapping[f.key] >= 0 ? `e.g. ${sampleRow?.[mapping[f.key]] || '(empty)'}` : f.required ? 'Required' : 'Optional'}</span>
                 </label>
               ))}
             </div>
@@ -322,7 +469,7 @@ export function ImportPage() {
             <button
               type="button"
               className="btn btn-primary"
-              disabled={mapErrors.length > 0 || dataRows.length === 0 || !wardsLoaded}
+              disabled={mapErrors.length > 0 || dataRowCount === 0 || !wardsLoaded}
               onClick={() => {
                 setTab('valid');
                 setPage(1);

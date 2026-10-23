@@ -5,29 +5,29 @@ import { useQuery } from '../../hooks/useQuery';
 import { useToast } from '../../hooks/useToast';
 import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
-import { donationService } from '../../services/donationService';
-import type { CancelDonationInput, DonationTransaction } from '../../types';
+import { paymentService } from '../../services/paymentService';
+import type { CancelPaymentInput, PaymentTransaction } from '../../types';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 import { isSuperAdmin } from '../../utils/permissions';
 import { TransactionStatusBadge } from '../common/Badges';
 import { FormField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { ErrorState, SkeletonLines } from '../common/States';
-import './Donations.css';
+import './Payments.css';
 
 interface Props {
   transactionId: string;
   onClose: () => void;
   /** Called after the Super Admin cancels or reverses the transaction. */
-  onChanged?: (tx: DonationTransaction) => void;
+  onChanged?: (tx: PaymentTransaction) => void;
 }
 
 export function TransactionDetailModal({ transactionId, onClose, onChanged }: Props) {
   const { admin } = useAuth();
   const toast = useToast();
   const { wardLabel, boothLabel } = useWards();
-  const { data, loading, error, reload } = useQuery(() => donationService.get(transactionId), transactionId);
-  const [voidKind, setVoidKind] = useState<CancelDonationInput['kind'] | null>(null);
+  const { data, loading, error, reload } = useQuery(() => paymentService.get(transactionId), transactionId);
+  const [voidKind, setVoidKind] = useState<CancelPaymentInput['kind'] | null>(null);
   const [reason, setReason] = useState('');
   const [reasonError, setReasonError] = useState<string | undefined>();
   const [submitting, setSubmitting] = useState(false);
@@ -46,8 +46,8 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
     setSubmitting(true);
     setServerError(null);
     try {
-      const updated = await donationService.cancel(tx.id, { kind: voidKind, reason: reason.trim() });
-      toast.success(`Transaction ${updated.id} ${updated.status.toLowerCase()}. The voter is now Not Received.`);
+      const updated = await paymentService.cancel(tx.id, { kind: voidKind, reason: reason.trim() });
+      toast.success(`Payment ${updated.status.toLowerCase()}. The voter is now Not Received.`);
       setVoidKind(null);
       setReason('');
       reload();
@@ -67,7 +67,7 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
       </button>
       <button type="button" className="btn btn-danger" onClick={submitVoid} disabled={submitting}>
         {submitting && <Loader2 size={16} className="spinner" aria-hidden="true" />}
-        {voidKind === 'Cancelled' ? 'Cancel transaction' : 'Reverse transaction'}
+        {voidKind === 'Cancelled' ? 'Cancel payment' : 'Reverse payment'}
       </button>
     </>
   ) : (
@@ -78,7 +78,7 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
             Reverse
           </button>
           <button type="button" className="btn btn-danger" onClick={() => setVoidKind('Cancelled')}>
-            Cancel transaction
+            Cancel payment
           </button>
         </>
       )}
@@ -89,7 +89,7 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
   );
 
   return (
-    <Modal title="Transaction details" onClose={onClose} footer={footer} locked={submitting}>
+    <Modal title="Payment details" onClose={onClose} footer={footer} locked={submitting}>
       {error && !data ? (
         <ErrorState message={error} onRetry={reload} />
       ) : !tx || (loading && !data) ? (
@@ -97,7 +97,7 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
       ) : (
         <div className="stack">
           <div className="row" style={{ justifyContent: 'space-between' }}>
-            <strong>{tx.id}</strong>
+            <strong>{formatCurrency(tx.amount)} · {formatDateTime(tx.timestamp)}</strong>
             <TransactionStatusBadge status={tx.status} />
           </div>
           <dl className="detail-grid">
@@ -147,7 +147,7 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
             <div className="stack">
               <div className="alert alert-warning">
                 <AlertTriangle size={18} aria-hidden="true" />
-                {voidKind === 'Cancelled' ? 'Cancelling' : 'Reversing'} keeps this record in the history but it will no longer count as a donation. The voter will
+                {voidKind === 'Cancelled' ? 'Cancelling' : 'Reversing'} keeps this record in the history but it will no longer count as a payment. The voter will
                 show Not Received again.
               </div>
               <FormField label="Reason" error={reasonError} required>

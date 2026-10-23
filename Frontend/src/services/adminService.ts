@@ -1,7 +1,7 @@
-import type { AccountStatus, Admin, AdminCreateInput, AdminInput, AdminQuery, Paginated } from '../types';
+import type { AccountStatus, Admin, AdminCreateInput, AdminInput, AdminOption, AdminQuery, Paginated } from '../types';
 import { apiClient, mockCall, USE_MOCK } from './apiClient';
 
-export type AdminOption = Pick<Admin, 'id' | 'fullName'>;
+export type { AdminOption };
 
 export const adminService = {
   list(q: AdminQuery): Promise<Paginated<Admin>> {
@@ -16,7 +16,7 @@ export const adminService = {
     if (USE_MOCK) return mockCall((s, t) => s.getAdmin(t, id));
     return apiClient.get<Admin>(`/admins/${encodeURIComponent(id)}`).then((r) => r.data);
   },
-  /** The server generates the sequential BL-n ID. */
+  /** The server generates the ID: C-n for Corporators, C-n-BLOm for BLOs. */
   create(input: AdminCreateInput): Promise<Admin> {
     if (USE_MOCK) return mockCall((s, t) => s.createAdmin(t, input));
     return apiClient.post<Admin>('/admins', input).then((r) => r.data);

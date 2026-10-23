@@ -7,7 +7,7 @@ export function ForbiddenPage() {
       <div className="state">
         <ShieldAlert size={36} className="state-icon" aria-hidden="true" />
         <p className="state-title">You don’t have access to this page</p>
-        <p className="state-message">This page is available to the Super Admin only.</p>
+        <p className="state-message">Your account role cannot open this page.</p>
         <Link to="/" className="btn btn-primary btn-sm">
           Go to dashboard
         </Link>

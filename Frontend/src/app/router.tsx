@@ -4,8 +4,8 @@ import { AdministratorsPage } from '../pages/administrators/AdministratorsPage';
 import { AuditLogsPage } from '../pages/audit/AuditLogsPage';
 import { LoginPage } from '../pages/auth/LoginPage';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
-import { DonationHistoryPage } from '../pages/donations/DonationHistoryPage';
-import { DonationManagementPage } from '../pages/donations/DonationManagementPage';
+import { PaymentHistoryPage } from '../pages/payments/PaymentHistoryPage';
+import { PaymentManagementPage } from '../pages/payments/PaymentManagementPage';
 import { NotFoundPage } from '../pages/ForbiddenPage';
 import { ImportPage } from '../pages/imports/ImportPage';
 import { ReportsPage } from '../pages/reports/ReportsPage';
@@ -17,7 +17,7 @@ import type { Role } from '../types';
 import { RequireAccess, RequireAuth } from './guards';
 
 const SA: Role[] = ['SUPER_ADMIN'];
-const BL: Role[] = ['BL_ADMIN'];
+const MANAGERS: Role[] = ['SUPER_ADMIN', 'CORPORATOR'];
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -28,13 +28,12 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <DashboardPage /> },
-          { path: 'administrators', element: <RequireAccess roles={SA}><AdministratorsPage /></RequireAccess> },
+          { path: 'administrators', element: <RequireAccess roles={MANAGERS}><AdministratorsPage /></RequireAccess> },
           { path: 'wards', element: <RequireAccess roles={SA}><WardsPage /></RequireAccess> },
-          { path: 'voters', element: <VotersPage key="all" scope="all" /> },
-          { path: 'voters/my-ward', element: <RequireAccess roles={BL}><VotersPage key="mine" scope="mine" /></RequireAccess> },
+          { path: 'voters', element: <VotersPage /> },
           { path: 'import', element: <RequireAccess roles={SA}><ImportPage /></RequireAccess> },
-          { path: 'donations', element: <DonationManagementPage /> },
-          { path: 'donations/history', element: <DonationHistoryPage /> },
+          { path: 'payments', element: <PaymentManagementPage /> },
+          { path: 'payments/history', element: <PaymentHistoryPage /> },
           { path: 'reports', element: <ReportsPage /> },
           { path: 'audit', element: <RequireAccess roles={SA}><AuditLogsPage /></RequireAccess> },
           { path: 'settings', element: <RequireAccess roles={SA}><SettingsPage /></RequireAccess> },

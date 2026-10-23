@@ -3,3 +3,6 @@ dist
 *.local
 .vite
 .playwright-mcp
+# The backend has its own repository: https://github.com/Ganesh30112006/khwaja_backend
+Backend/
+.claude/settings.local.json

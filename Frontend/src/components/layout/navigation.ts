@@ -23,24 +23,25 @@ export interface NavItem {
 }
 
 const SA: Role[] = ['SUPER_ADMIN'];
-const BL: Role[] = ['BL_ADMIN'];
-const BOTH: Role[] = ['SUPER_ADMIN', 'BL_ADMIN'];
+const CORPORATOR: Role[] = ['CORPORATOR'];
+const FIELD: Role[] = ['CORPORATOR', 'BLO'];
+const ALL: Role[] = ['SUPER_ADMIN', 'CORPORATOR', 'BLO'];
 
 export const NAV_ITEMS: NavItem[] = [
-  { path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: BOTH },
-  { path: '/administrators', label: 'Administrators', icon: ShieldCheck, roles: SA },
+  { path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ALL },
+  { path: '/administrators', label: 'Accounts', icon: ShieldCheck, roles: SA },
+  { path: '/administrators', label: 'My BLOs', icon: UsersRound, roles: CORPORATOR },
   { path: '/wards', label: 'Wards & Booths', icon: MapPinned, roles: SA },
   { path: '/voters', label: 'Voter Management', icon: Users, roles: SA },
-  { path: '/voters', label: 'All Voters', icon: Users, roles: BL },
-  { path: '/voters/my-ward', label: 'My Ward Voters', icon: UsersRound, roles: BL },
+  { path: '/voters', label: 'My Voters', icon: Users, roles: FIELD },
   { path: '/import', label: 'Import Voters', icon: FileUp, roles: SA },
-  { path: '/donations', label: 'Donation Management', icon: HandCoins, roles: BOTH },
-  { path: '/donations/history', label: 'Donation History', icon: History, roles: BOTH },
+  { path: '/payments', label: 'Payment Management', icon: HandCoins, roles: ALL },
+  { path: '/payments/history', label: 'Payment History', icon: History, roles: ALL },
   { path: '/reports', label: 'Reports & Analytics', icon: BarChart3, roles: SA },
-  { path: '/reports', label: 'Reports', icon: BarChart3, roles: BL },
+  { path: '/reports', label: 'Reports', icon: BarChart3, roles: FIELD },
   { path: '/audit', label: 'Audit Logs', icon: ClipboardList, roles: SA },
   { path: '/settings', label: 'Settings', icon: Settings, roles: SA },
-  { path: '/profile', label: 'My Profile', icon: UserCircle, roles: BOTH },
+  { path: '/profile', label: 'My Profile', icon: UserCircle, roles: ALL },
 ];
 
 export function navFor(admin: Admin): NavItem[] {
@@ -50,13 +51,12 @@ export function navFor(admin: Admin): NavItem[] {
 /** Page titles used for breadcrumbs. */
 export const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
-  '/administrators': 'Administrators',
+  '/administrators': 'Accounts',
   '/wards': 'Wards & Booths',
   '/voters': 'Voters',
-  '/voters/my-ward': 'My Ward Voters',
   '/import': 'Import Voters',
-  '/donations': 'Donation Management',
-  '/donations/history': 'Donation History',
+  '/payments': 'Payment Management',
+  '/payments/history': 'Payment History',
   '/reports': 'Reports & Analytics',
   '/audit': 'Audit Logs',
   '/settings': 'Settings',

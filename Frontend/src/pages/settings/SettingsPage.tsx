@@ -23,7 +23,7 @@ export function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description="Donation amount configuration." />
+      <PageHeader title="Settings" description="Payment amount configuration." />
       {error && !current ? (
         <div className="card">
           <ErrorState message={error} onRetry={reload} />
@@ -34,14 +34,14 @@ export function SettingsPage() {
         </div>
       ) : (
         <div className="stack">
-          <DonationSettingsForm data={current} onSaved={setLatest} />
+          <PaymentSettingsForm data={current} onSaved={setLatest} />
           <section className="card">
             <div className="card-header">
               <h2>Configuration history</h2>
             </div>
             <div className="table-wrap">
               <table className="table">
-                <caption className="sr-only">Donation amount history</caption>
+                <caption className="sr-only">Payment amount history</caption>
                 <thead>
                   <tr>
                     <th scope="col">Changed</th>
@@ -78,7 +78,7 @@ export function SettingsPage() {
   );
 }
 
-function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSaved: (r: SettingsResponse) => void }) {
+function PaymentSettingsForm({ data, onSaved }: { data: SettingsResponse; onSaved: (r: SettingsResponse) => void }) {
   const toast = useToast();
   const confirm = useConfirm();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -109,8 +109,8 @@ function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSav
     const parsed = settingsSchema.parse(values);
     if (parsed.defaultAmount !== data.settings.defaultAmount) {
       const ok = await confirm({
-        title: 'Change the donation amount?',
-        message: `New donations will default to ${formatCurrency(parsed.defaultAmount)} from ${formatDate(`${parsed.effectiveDate}T00:00:00`)}. Past transactions keep their recorded amounts.`,
+        title: 'Change the payment amount?',
+        message: `New payments will default to ${formatCurrency(parsed.defaultAmount)} from ${formatDate(`${parsed.effectiveDate}T00:00:00`)}. Past transactions keep their recorded amounts.`,
         confirmLabel: 'Save',
       });
       if (!ok) return;
@@ -119,7 +119,7 @@ function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSav
     try {
       const res = await settingsService.update(parsed);
       onSaved(res);
-      toast.success('Donation settings saved.');
+      toast.success('Payment settings saved.');
     } catch (e) {
       if (e instanceof ApiError && e.fieldErrors) {
         if (e.fieldErrors.defaultAmount) setError('defaultAmount', { message: e.fieldErrors.defaultAmount });
@@ -133,9 +133,9 @@ function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSav
     <section className="card">
       <div className="card-header">
         <div>
-          <h2>Donation amount</h2>
+          <h2>Payment amount</h2>
           <p className="small muted">
-            Amount in effect today: <strong>{formatCurrency(data.currentAmount)}</strong>. It is suggested in the donation form.
+            Amount in effect today: <strong>{formatCurrency(data.currentAmount)}</strong>. It is suggested in the payment form.
           </p>
         </div>
       </div>
@@ -147,7 +147,7 @@ function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSav
           </div>
         )}
         <div className="form-grid">
-          <FormField label="Default donation amount (₹)" error={errors.defaultAmount?.message} required>
+          <FormField label="Default payment amount (₹)" error={errors.defaultAmount?.message} required>
             <input className="input" type="number" inputMode="numeric" min={1} step={1} {...register('defaultAmount')} />
           </FormField>
           <FormField label="Currency">
@@ -158,7 +158,7 @@ function DonationSettingsForm({ data, onSaved }: { data: SettingsResponse; onSav
           </FormField>
           <div className="field" style={{ justifyContent: 'center' }}>
             <label className="check">
-              <input type="checkbox" {...register('allowAmountOverride')} /> Allow admins to change the amount per donation
+              <input type="checkbox" {...register('allowAmountOverride')} /> Allow admins to change the amount per payment
             </label>
           </div>
         </div>
@@ -178,7 +178,7 @@ function DevTools() {
   const reset = async () => {
     const ok = await confirm({
       title: 'Reset demo data?',
-      message: 'All mock voters, admins, donations and audit logs in this browser are replaced with fresh sample data. You will be signed out.',
+      message: 'All mock voters, admins, payments and audit logs in this browser are replaced with fresh sample data. You will be signed out.',
       confirmLabel: 'Reset',
       tone: 'danger',
     });

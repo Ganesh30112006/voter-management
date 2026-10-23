@@ -6,24 +6,24 @@ import { voterService } from '../../services/voterService';
 import type { Voter, VoterListItem } from '../../types';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 import { isSuperAdmin } from '../../utils/permissions';
-import { DonationStatusBadge, TransactionStatusBadge, VoterStatusBadge } from '../common/Badges';
+import { PaymentStatusBadge, TransactionStatusBadge, VoterStatusBadge } from '../common/Badges';
 import { Modal } from '../common/Modal';
 import { ErrorState, SkeletonLines } from '../common/States';
-import { DonationAction } from '../donations/DonationAction';
-import '../donations/Donations.css';
+import { PaymentAction } from '../payments/PaymentAction';
+import '../payments/Payments.css';
 
 interface Props {
   recordId: string;
   /** Changes whenever data may have changed elsewhere, so the modal refetches. */
   refreshKey: number;
   onClose: () => void;
-  onDonate: (voter: VoterListItem) => void;
+  onPay: (voter: VoterListItem) => void;
   onViewTransaction: (id: string) => void;
   onEdit: (voter: Voter) => void;
   onAddHouseholdMember: (voter: Voter) => void;
 }
 
-export function VoterDetailModal({ recordId, refreshKey, onClose, onDonate, onViewTransaction, onEdit, onAddHouseholdMember }: Props) {
+export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewTransaction, onEdit, onAddHouseholdMember }: Props) {
   const { admin } = useAuth();
   const { wardLabel, boothLabel } = useWards();
   const { data, error, reload } = useQuery(() => voterService.get(recordId), `${recordId}:${refreshKey}`);
@@ -42,7 +42,7 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onDonate, onVi
           </button>
         </>
       )}
-      <DonationAction voter={v} onDonate={onDonate} onViewReceipt={onViewTransaction} />
+      <PaymentAction voter={v} onPay={onPay} onViewReceipt={onViewTransaction} />
     </>
   );
 
@@ -63,7 +63,7 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onDonate, onVi
             </div>
             <div className="row">
               <VoterStatusBadge status={v.status} />
-              <DonationStatusBadge status={v.donationStatus} />
+              <PaymentStatusBadge status={v.paymentStatus} />
             </div>
           </div>
 
@@ -92,30 +92,30 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onDonate, onVi
             </div>
           </dl>
 
-          {v.latestDonation && (
+          {v.latestPayment && (
             <div className="alert alert-success">
               <div>
-                <strong>✓ Received</strong> — {formatCurrency(v.latestDonation.amount)} to {v.latestDonation.receiverName} ({v.latestDonation.receiverMobile})
+                <strong>✓ Received</strong> — {formatCurrency(v.latestPayment.amount)} to {v.latestPayment.receiverName} ({v.latestPayment.receiverMobile})
                 <br />
                 <span className="small">
-                  {formatDateTime(v.latestDonation.timestamp)} · recorded by {v.latestDonation.adminId}
+                  {formatDateTime(v.latestPayment.timestamp)} · recorded by {v.latestPayment.adminId}
                 </span>
               </div>
             </div>
           )}
 
           <div>
-            <h3 style={{ marginBottom: 8 }}>Donation history</h3>
+            <h3 style={{ marginBottom: 8 }}>Payment history</h3>
             {data.transactions.length === 0 ? (
-              <p className="muted small">No donations recorded for this voter.</p>
+              <p className="muted small">No payments recorded for this voter.</p>
             ) : (
               <div className="tx-history">
                 {data.transactions.map((t) => (
                   <button type="button" key={t.id} className="tx-history-item" onClick={() => onViewTransaction(t.id)}>
                     <span>
-                      <strong className="small">{t.id}</strong>
+                      <strong className="small">{formatDateTime(t.timestamp)}</strong>
                       <span className="small muted" style={{ display: 'block' }}>
-                        {formatDateTime(t.timestamp)} · {t.receiverName}
+                        To {t.receiverName} · by {t.adminId}
                       </span>
                     </span>
                     <span className="row">

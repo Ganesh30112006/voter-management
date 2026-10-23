@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { donationSchema, isValidIndianMobile, loginSchema, normalizeMobile, normalizeVoterStatus, voterSchema } from './validation';
+import { paymentSchema, isValidIndianMobile, loginSchema, normalizeMobile, normalizeVoterStatus, voterSchema } from './validation';
 
 describe('Indian mobile numbers', () => {
   it('accepts 10 digits starting with 6-9, with common prefixes', () => {
@@ -37,21 +37,23 @@ describe('voter status', () => {
   });
 });
 
-describe('donation form', () => {
+describe('payment form', () => {
   it('requires amount, receiver name and receiver mobile', () => {
-    expect(donationSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(true);
-    expect(donationSchema.safeParse({ amount: '', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(donationSchema.safeParse({ amount: '0', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(donationSchema.safeParse({ amount: '20.5', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(donationSchema.safeParse({ amount: '2000', receiverName: '', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(donationSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '12345' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(true);
+    expect(paymentSchema.safeParse({ amount: '', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '0', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '20.5', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: '', receiverMobile: '9876543210' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '12345' }).success).toBe(false);
   });
 });
 
 describe('login form', () => {
-  it('signs in with a mobile number', () => {
-    const r = loginSchema.safeParse({ mobile: '+91 9876543210', password: 'x', remember: false });
-    expect(r.success && r.data.mobile).toBe('9876543210');
-    expect(loginSchema.safeParse({ mobile: 'BL-1', password: 'x', remember: false }).success).toBe(false);
+  it('signs in with a mobile number or a full name', () => {
+    const r = loginSchema.safeParse({ identifier: '+91 9876543210', password: 'x', remember: false });
+    expect(r.success && r.data.identifier).toBe('9876543210');
+    const byName = loginSchema.safeParse({ identifier: '  Ramesh   Babu ', password: 'x', remember: false });
+    expect(byName.success && byName.data.identifier).toBe('Ramesh Babu');
+    expect(loginSchema.safeParse({ identifier: '   ', password: 'x', remember: false }).success).toBe(false);
   });
 });

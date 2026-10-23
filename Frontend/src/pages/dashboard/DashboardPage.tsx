@@ -23,25 +23,25 @@ import { TransactionStatusBadge } from '../../components/common/Badges';
 import { PageHeader } from '../../components/common/PageHeader';
 import { StatCard, StatGrid } from '../../components/common/StatCard';
 import { ErrorState } from '../../components/common/States';
-import { TransactionDetailModal } from '../../components/donations/TransactionDetailModal';
+import { TransactionDetailModal } from '../../components/payments/TransactionDetailModal';
 import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useQuery } from '../../hooks/useQuery';
 import { useWards } from '../../hooks/useWards';
 import { reportService } from '../../services/reportService';
-import type { DashboardStats, ReportFilters } from '../../types';
+import type { DashboardStats, ReportFilters, Role } from '../../types';
 import { formatCurrency, formatDateTime, formatNumber } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 import './Dashboard.css';
 
 export function DashboardPage() {
   const admin = useCurrentAdmin();
   const superAdmin = isSuperAdmin(admin);
-  const { wards, boothsForWard, wardLabel, boothLabel } = useWards();
+  const { wards, booths, wardLabel, boothLabel } = useWards();
   const [filters, setFilters] = useState<ReportFilters>({ from: '', to: '', wardId: '', boothId: '' });
   const [txId, setTxId] = useState<string | null>(null);
   const { data: s, loading, error, reload } = useQuery(() => reportService.dashboard(filters), JSON.stringify(filters));
 
-  const wardOptions = superAdmin ? wards : wards.filter((w) => admin.wardIds.includes(w.id));
+  const wardOptions = wardsInArea(admin, wards);
   const set = (patch: Partial<ReportFilters>) => setFilters((f) => ({ ...f, ...patch }));
   const busy = loading && !s;
 
@@ -49,7 +49,7 @@ export function DashboardPage() {
     <>
       <PageHeader
         title={superAdmin ? 'Dashboard' : `Welcome, ${admin.fullName.split(' ')[0]}`}
-        description={superAdmin ? 'Overview of voters, administrators and donations.' : `Your wards: ${admin.wardIds.map(wardLabel).join(', ') || 'none assigned'}`}
+        description={superAdmin ? 'Overview of voters, Corporators, BLOs and payments.' : `${admin.role === 'BLO' ? 'Your area' : 'Your wards'}: ${admin.wardIds.map(wardLabel).join(', ') || 'none assigned'}${admin.boothIds.length ? ` (booths ${admin.boothIds.map(boothLabel).join(', ')})` : ''}`}
       />
 
       <div className="card dashboard-filters">
@@ -76,7 +76,7 @@ export function DashboardPage() {
           <span className="field-label">Booth</span>
           <select className="select" value={filters.boothId} disabled={!filters.wardId} onChange={(e) => set({ boothId: e.target.value })}>
             <option value="">{filters.wardId ? 'All booths' : 'Select a ward first'}</option>
-            {(filters.wardId ? boothsForWard(filters.wardId) : []).map((b) => (
+            {(filters.wardId ? boothsInArea(admin, filters.wardId, booths) : []).map((b) => (
               <option key={b.id} value={b.id}>
                 Booth {b.number}
               </option>
@@ -96,12 +96,13 @@ export function DashboardPage() {
         </div>
       ) : (
         <div className="stack">
-          <QuickActions superAdmin={superAdmin} />
+          <QuickActions role={admin.role} />
 
-          <h2 className="section-title">Voters {superAdmin ? '' : 'in your wards'}</h2>
+          <h2 className="section-title">Voters {superAdmin ? '' : 'in your area'}</h2>
           <StatGrid>
-            {superAdmin && <StatCard label="Total Administrators" hint="BL Admin accounts" value={formatNumber(s?.totalAdmins ?? 0)} icon={ShieldCheck} tone="navy" loading={busy} />}
-            <StatCard label={superAdmin ? 'Total Voters' : 'Voters in Assigned Wards'} value={formatNumber(s?.totalVoters ?? 0)} icon={Users} loading={busy} />
+            {s?.totalCorporators != null && <StatCard label="Corporators" value={formatNumber(s.totalCorporators)} icon={ShieldCheck} tone="navy" loading={busy} />}
+            {s?.totalBlos != null && <StatCard label={superAdmin ? 'BLOs' : 'My BLOs'} value={formatNumber(s.totalBlos)} icon={UsersRound} tone="navy" loading={busy} />}
+            <StatCard label={superAdmin ? 'Total Voters' : 'Voters in Your Area'} value={formatNumber(s?.totalVoters ?? 0)} icon={Users} loading={busy} />
             {superAdmin && <StatCard label="Total Wards" value={formatNumber(s?.totalWards ?? 0)} icon={MapPinned} tone="navy" loading={busy} />}
             {superAdmin && <StatCard label="Total Booths" value={formatNumber(s?.totalBooths ?? 0)} icon={MapPin} tone="navy" loading={busy} />}
             <StatCard label="Active Voters" value={formatNumber(s?.activeVoters ?? 0)} icon={UserCheck} tone="green" loading={busy} />
@@ -109,13 +110,13 @@ export function DashboardPage() {
             <StatCard label="Shifted Voters" value={formatNumber(s?.shiftedVoters ?? 0)} icon={Truck} tone="amber" loading={busy} />
           </StatGrid>
 
-          <h2 className="section-title">Donations</h2>
+          <h2 className="section-title">Payments</h2>
           <StatGrid>
             <StatCard label="Voters Received" hint="Unique voters" value={formatNumber(s?.votersReceived ?? 0)} icon={CheckCircle2} tone="green" loading={busy} />
             <StatCard label="Voters Not Received" hint="Unique voters" value={formatNumber(s?.votersNotReceived ?? 0)} icon={XCircle} tone="gray" loading={busy} />
-            <StatCard label={superAdmin ? 'Donation Transactions' : 'Transactions in My Wards'} hint="Successful transactions" value={formatNumber(s?.totalTransactions ?? 0)} icon={Receipt} loading={busy} />
+            <StatCard label={superAdmin ? 'Payment Transactions' : 'Transactions in My Area'} hint="Successful transactions" value={formatNumber(s?.totalTransactions ?? 0)} icon={Receipt} loading={busy} />
             <StatCard label="Total Amount Distributed" value={formatCurrency(s?.totalAmount ?? 0)} icon={IndianRupee} tone="green" loading={busy} />
-            {!superAdmin && <StatCard label="Donations Recorded by Me" hint={formatCurrency(s?.myAmount ?? 0)} value={formatNumber(s?.myTransactions ?? 0)} icon={HandCoins} loading={busy} />}
+            {!superAdmin && <StatCard label="Payments Recorded by Me" hint={formatCurrency(s?.myAmount ?? 0)} value={formatNumber(s?.myTransactions ?? 0)} icon={HandCoins} loading={busy} />}
           </StatGrid>
 
           {s && <DashboardCharts s={s} superAdmin={superAdmin} />}
@@ -123,8 +124,8 @@ export function DashboardPage() {
           <div className="dashboard-columns">
             <section className="card">
               <div className="card-header">
-                <h2>Recent donations</h2>
-                <Link to="/donations/history" className="small">
+                <h2>Recent payments</h2>
+                <Link to="/payments/history" className="small">
                   View all
                 </Link>
               </div>
@@ -149,7 +150,7 @@ export function DashboardPage() {
                 </ul>
               ) : (
                 <p className="muted small" style={{ padding: 18 }}>
-                  {busy ? 'Loading…' : 'No donations yet.'}
+                  {busy ? 'Loading…' : 'No payments yet.'}
                 </p>
               )}
             </section>
@@ -192,20 +193,21 @@ export function DashboardPage() {
   );
 }
 
-function QuickActions({ superAdmin }: { superAdmin: boolean }) {
-  const actions = superAdmin
-    ? [
-        { to: '/donations', label: 'Record Donation', icon: HandCoins },
-        { to: '/voters', label: 'Voter Management', icon: Users },
-        { to: '/import', label: 'Import Voters', icon: FileUp },
-        { to: '/administrators', label: 'Administrators', icon: ShieldCheck },
-      ]
-    : [
-        { to: '/voters', label: 'Search Voters', icon: Search },
-        { to: '/voters/my-ward', label: 'My Ward Voters', icon: UsersRound },
-        { to: '/donations', label: 'Record Donation', icon: HandCoins },
-        { to: '/donations/history', label: 'Donation History', icon: History },
-      ];
+function QuickActions({ role }: { role: Role }) {
+  const actions =
+    role === 'SUPER_ADMIN'
+      ? [
+          { to: '/payments', label: 'Record Payment', icon: HandCoins },
+          { to: '/voters', label: 'Voter Management', icon: Users },
+          { to: '/import', label: 'Import Voters', icon: FileUp },
+          { to: '/administrators', label: 'Accounts', icon: ShieldCheck },
+        ]
+      : [
+          { to: '/voters', label: 'Search My Voters', icon: Search },
+          ...(role === 'CORPORATOR' ? [{ to: '/administrators', label: 'My BLOs', icon: UsersRound }] : []),
+          { to: '/payments', label: 'Record Payment', icon: HandCoins },
+          { to: '/payments/history', label: 'Payment History', icon: History },
+        ];
   return (
     <div className="quick-actions">
       {actions.map((a) => (
@@ -229,7 +231,7 @@ function DashboardCharts({ s, superAdmin }: { s: DashboardStats; superAdmin: boo
     { name: 'Not Active', value: s.notActiveVoters, color: CHART.gray },
     { name: 'Shifted', value: s.shiftedVoters, color: CHART.amber },
   ];
-  const donationStatus = [
+  const paymentStatus = [
     { name: 'Received', value: s.votersReceived, color: CHART.green },
     { name: 'Not Received', value: s.votersNotReceived, color: CHART.gray },
   ];
@@ -245,14 +247,14 @@ function DashboardCharts({ s, superAdmin }: { s: DashboardStats; superAdmin: boo
       <ChartCard title="Voter status" empty={!s.totalVoters}>
         <StatusDonut data={voterStatus} />
       </ChartCard>
-      <ChartCard title="Donation status" subtitle="Unique voters" empty={!s.totalVoters}>
-        <StatusDonut data={donationStatus} />
+      <ChartCard title="Payment status" subtitle="Unique voters" empty={!s.totalVoters}>
+        <StatusDonut data={paymentStatus} />
       </ChartCard>
-      <ChartCard title="Amount distributed over time" subtitle="Daily total of successful donations" empty={!overTime.length}>
+      <ChartCard title="Amount distributed over time" subtitle="Daily total of successful payments" empty={!overTime.length}>
         <TrendLineChart data={overTime} dataKey="amount" nameKey="label" valueLabel="Amount" format="currency" />
       </ChartCard>
       {superAdmin ? (
-        <ChartCard title="Donations recorded by administrator" subtitle="Successful transactions" empty={!s.byAdmin.length}>
+        <ChartCard title="Payments recorded by administrator" subtitle="Successful transactions" empty={!s.byAdmin.length}>
           <SimpleBarChart data={s.byAdmin as unknown as Record<string, unknown>[]} dataKey="transactions" nameKey="adminId" valueLabel="Transactions" />
         </ChartCard>
       ) : (

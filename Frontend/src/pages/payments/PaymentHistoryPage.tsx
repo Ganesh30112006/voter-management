@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { TransactionStatusBadge } from '../../components/common/Badges';
 import { PageHeader } from '../../components/common/PageHeader';
 import { SearchInput } from '../../components/common/SearchInput';
-import { TransactionDetailModal } from '../../components/donations/TransactionDetailModal';
+import { TransactionDetailModal } from '../../components/payments/TransactionDetailModal';
 import { DataTable, type Column, type SortState } from '../../components/tables/DataTable';
 import { Pagination } from '../../components/tables/Pagination';
 import { useCurrentAdmin } from '../../hooks/useAuth';
@@ -13,19 +13,19 @@ import { useToast } from '../../hooks/useToast';
 import { useWards } from '../../hooks/useWards';
 import { adminService, type AdminOption } from '../../services/adminService';
 import { errorMessage } from '../../services/apiError';
-import { donationService } from '../../services/donationService';
-import type { DonationQuery, DonationTransaction, TransactionStatus } from '../../types';
+import { paymentService } from '../../services/paymentService';
+import type { PaymentQuery, PaymentTransaction, TransactionStatus } from '../../types';
 import { downloadCsv, downloadXlsx, type Cell } from '../../utils/download';
 import { formatCurrency, formatDateTime } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 
-const HEADERS = ['Transaction ID', 'Voter ID', 'Voter Name', 'Ward', 'Booth', 'Amount (INR)', 'Receiver Name', 'Receiver Mobile', 'Timestamp', 'Recorded By', 'Status'];
+const HEADERS = ['Voter ID', 'Voter Name', 'Ward', 'Booth', 'Amount (INR)', 'Receiver Name', 'Receiver Mobile', 'Timestamp', 'Recorded By', 'Status'];
 
-export function DonationHistoryPage() {
+export function PaymentHistoryPage() {
   const admin = useCurrentAdmin();
   const superAdmin = isSuperAdmin(admin);
   const toast = useToast();
-  const { wards, boothsForWard, wardLabel, boothLabel } = useWards();
+  const { wards, booths, wardLabel, boothLabel } = useWards();
 
   const [search, setSearch] = useState('');
   const [from, setFrom] = useState('');
@@ -51,7 +51,7 @@ export function DonationHistoryPage() {
   }, [superAdmin]);
 
   const [sort, setSort] = useState<SortState>({ sortBy: 'timestamp', sortDir: 'desc' });
-  const query: DonationQuery = {
+  const query: PaymentQuery = {
     search: debouncedSearch,
     from,
     to,
@@ -59,12 +59,12 @@ export function DonationHistoryPage() {
     boothId,
     adminId: superAdmin ? adminId : '',
     status,
-    sortBy: sort.sortBy as DonationQuery['sortBy'],
+    sortBy: sort.sortBy as PaymentQuery['sortBy'],
     sortDir: sort.sortDir,
     page,
     pageSize,
   };
-  const { data, loading, error, reload } = useQuery(() => donationService.list(query), JSON.stringify(query) + refreshKey);
+  const { data, loading, error, reload } = useQuery(() => paymentService.list(query), JSON.stringify(query) + refreshKey);
 
   const update =
     <T,>(setter: (v: T) => void) =>
@@ -73,9 +73,8 @@ export function DonationHistoryPage() {
       setPage(1);
     };
 
-  const columns = useMemo<Column<DonationTransaction>[]>(
+  const columns = useMemo<Column<PaymentTransaction>[]>(
     () => [
-      { key: 'id', header: 'Transaction ID', sortKey: 'id', render: (t) => <span className="mono nowrap">{t.id}</span> },
       { key: 'voterId', header: 'Voter ID', render: (t) => <span className="mono">{t.voterId}</span> },
       { key: 'voterName', header: 'Voter Name', sortKey: 'voterName', render: (t) => t.voterName },
       { key: 'ward', header: 'Ward', render: (t) => wardLabel(t.wardId) },
@@ -91,7 +90,7 @@ export function DonationHistoryPage() {
         header: 'Actions',
         hideLabelOnMobile: true,
         render: (t) => (
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTxId(t.id)} aria-label={`View transaction ${t.id}`}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTxId(t.id)} aria-label={`View payment to ${t.voterName}`}>
             <Eye size={15} aria-hidden="true" /> View
           </button>
         ),
@@ -100,8 +99,7 @@ export function DonationHistoryPage() {
     [wardLabel, boothLabel],
   );
 
-  const toRow = (t: DonationTransaction): Cell[] => [
-    t.id,
+  const toRow = (t: PaymentTransaction): Cell[] => [
     t.voterId,
     t.voterName,
     wardLabel(t.wardId),
@@ -117,9 +115,9 @@ export function DonationHistoryPage() {
   const exportAs = async (format: 'csv' | 'xlsx') => {
     setExporting(true);
     try {
-      const rows = (await donationService.exportAll({ ...query, page: undefined, pageSize: undefined })).map(toRow);
-      if (format === 'csv') downloadCsv('donation-history.csv', HEADERS, rows);
-      else downloadXlsx('donation-history.xlsx', [{ name: 'Donations', headers: HEADERS, rows }]);
+      const rows = (await paymentService.exportAll({ ...query, page: undefined, pageSize: undefined })).map(toRow);
+      if (format === 'csv') downloadCsv('payment-history.csv', HEADERS, rows);
+      else downloadXlsx('payment-history.xlsx', [{ name: 'Payments', headers: HEADERS, rows }]);
       toast.success(`Exported ${rows.length} transactions.`);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -131,8 +129,8 @@ export function DonationHistoryPage() {
   return (
     <>
       <PageHeader
-        title="Donation History"
-        description="Every donation transaction, including cancelled and reversed ones."
+        title="Payment History"
+        description="Every payment transaction, including cancelled and reversed ones."
         actions={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => exportAs('csv')} disabled={exporting}>
@@ -149,7 +147,7 @@ export function DonationHistoryPage() {
         <div className="card-body">
           <div className="filters">
             <div className="filter-search">
-              <SearchInput value={search} onChange={update(setSearch)} placeholder="Transaction ID, voter name, voter ID or receiver mobile" />
+              <SearchInput value={search} onChange={update(setSearch)} placeholder="Voter name, voter ID, receiver name or mobile" />
             </div>
             <label className="field">
               <span className="field-label">From</span>
@@ -171,7 +169,7 @@ export function DonationHistoryPage() {
                 }}
               >
                 <option value="">All wards</option>
-                {wards.map((w) => (
+                {wardsInArea(admin, wards).map((w) => (
                   <option key={w.id} value={w.id}>
                     Ward {w.number}
                   </option>
@@ -182,7 +180,7 @@ export function DonationHistoryPage() {
               <span className="field-label">Booth</span>
               <select className="select" value={boothId} disabled={!wardId} onChange={(e) => update(setBoothId)(e.target.value)}>
                 <option value="">{wardId ? 'All booths' : 'Select a ward first'}</option>
-                {(wardId ? boothsForWard(wardId) : []).map((b) => (
+                {(wardId ? boothsInArea(admin, wardId, booths) : []).map((b) => (
                   <option key={b.id} value={b.id}>
                     Booth {b.number}
                   </option>
@@ -214,7 +212,7 @@ export function DonationHistoryPage() {
           </div>
         </div>
         <DataTable
-          caption="Donation transactions"
+          caption="Payment transactions"
           columns={columns}
           rows={data?.items}
           rowKey={(t) => t.id}

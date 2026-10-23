@@ -6,13 +6,14 @@ import type {
   Admin,
   AuditLog,
   Booth,
-  DonationSettings,
-  DonationTransaction,
+  PaymentSettings,
+  PaymentTransaction,
   SettingsHistoryEntry,
   Voter,
   VoterStatus,
   Ward,
 } from '../types';
+import { coversVoter } from '../utils/permissions';
 
 export interface MockSession {
   id: string;
@@ -33,16 +34,18 @@ export interface MockDb {
   wards: Ward[];
   booths: Booth[];
   voters: Voter[];
-  transactions: DonationTransaction[];
+  transactions: PaymentTransaction[];
   audit: AuditLog[];
-  settings: DonationSettings;
+  settings: PaymentSettings;
   settingsHistory: SettingsHistoryEntry[];
   idempotency: Record<string, string>;
-  counters: { admin: number; voter: number; txn: number; audit: number; ward: number; booth: number; settings: number };
+  counters: { superAdmin: number; corporator: number; voter: number; txn: number; audit: number; ward: number; booth: number; settings: number };
+  /** Corporator id -> last BLO number used (C-1-BLO1, C-1-BLO2, ...). */
+  bloCounters: Record<string, number>;
 }
 
 const STORAGE_KEY = 'vms-mock-db';
-const DB_VERSION = 4;
+const DB_VERSION = 7;
 
 function mulberry32(seed: number) {
   return () => {
@@ -84,11 +87,15 @@ export function seedDb(): MockDb {
   }
 
   const admins: Admin[] = [
-    { id: 'SA-1', fullName: 'Super Administrator', mobile: '9000000001', role: 'SUPER_ADMIN', wardIds: [], boothIds: [], status: 'Active', createdAt: iso(90 * day) },
-    { id: 'BL-1', fullName: 'Ramesh Babu', mobile: '9876543210', role: 'BL_ADMIN', wardIds: ['W1', 'W2'], boothIds: [], status: 'Active', createdAt: iso(60 * day) },
-    { id: 'BL-2', fullName: 'Sunitha Devi', mobile: '9876500011', role: 'BL_ADMIN', wardIds: ['W3'], boothIds: [], status: 'Active', createdAt: iso(55 * day) },
-    { id: 'BL-3', fullName: 'Abdul Rahman', mobile: '9123456780', role: 'BL_ADMIN', wardIds: ['W4'], boothIds: ['B4-1', 'B4-2'], status: 'Active', createdAt: iso(40 * day) },
-    { id: 'BL-4', fullName: 'Kiran Kumar', mobile: '8098765432', role: 'BL_ADMIN', wardIds: ['W5'], boothIds: [], status: 'Inactive', createdAt: iso(30 * day) },
+    { id: 'SA-1', fullName: 'Super Administrator', mobile: '9000000001', role: 'SUPER_ADMIN', location: '', corporatorId: null, wardIds: [], boothIds: [], status: 'Active', createdAt: iso(90 * day) },
+    { id: 'C-1', fullName: 'Ramesh Babu', mobile: '9876543210', role: 'CORPORATOR', location: 'Gandhi Nagar, Main Road', corporatorId: null, wardIds: ['W1', 'W2'], boothIds: [], status: 'Active', createdAt: iso(60 * day) },
+    { id: 'C-2', fullName: 'Sunitha Devi', mobile: '9876500011', role: 'CORPORATOR', location: 'Old Town, Market Street', corporatorId: null, wardIds: ['W3'], boothIds: [], status: 'Active', createdAt: iso(55 * day) },
+    { id: 'C-3', fullName: 'Abdul Rahman', mobile: '9123456780', role: 'CORPORATOR', location: 'Lake View, Temple Street', corporatorId: null, wardIds: ['W4'], boothIds: [], status: 'Active', createdAt: iso(40 * day) },
+    { id: 'C-4', fullName: 'Kiran Kumar', mobile: '8098765432', role: 'CORPORATOR', location: 'Station Area', corporatorId: null, wardIds: ['W5'], boothIds: [], status: 'Inactive', createdAt: iso(30 * day) },
+    { id: 'C-1-BLO1', fullName: 'Lakshmi Prasad', mobile: '9876543211', role: 'BLO', location: '', corporatorId: 'C-1', wardIds: ['W1'], boothIds: ['B1-1', 'B1-2'], status: 'Active', createdAt: iso(50 * day) },
+    { id: 'C-1-BLO2', fullName: 'Venkat Rao', mobile: '9876543212', role: 'BLO', location: '', corporatorId: 'C-1', wardIds: ['W2'], boothIds: [], status: 'Active', createdAt: iso(48 * day) },
+    { id: 'C-2-BLO1', fullName: 'Meena Kumari', mobile: '9876500012', role: 'BLO', location: '', corporatorId: 'C-2', wardIds: ['W3'], boothIds: ['B3-1'], status: 'Active', createdAt: iso(45 * day) },
+    { id: 'C-3-BLO1', fullName: 'Imran Khan', mobile: '9123456781', role: 'BLO', location: '', corporatorId: 'C-3', wardIds: ['W4'], boothIds: ['B4-1'], status: 'Active', createdAt: iso(35 * day) },
   ];
 
   const statuses: VoterStatus[] = ['Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Not Active', 'Shifted'];
@@ -131,27 +138,28 @@ export function seedDb(): MockDb {
     }
   }
 
-  const settings: DonationSettings = {
+  const settings: PaymentSettings = {
     defaultAmount: 2000,
     currency: 'INR',
     effectiveDate: new Date(now - 45 * day).toISOString().slice(0, 10),
     allowAmountOverride: true,
   };
   const settingsHistory: SettingsHistoryEntry[] = [
-    { id: 'CFG-1', changedAt: iso(45 * day), changedBy: 'SA-1', defaultAmount: 2000, effectiveDate: settings.effectiveDate, summary: 'Initial donation amount set to ₹2,000' },
+    { id: 'CFG-1', changedAt: iso(45 * day), changedBy: 'SA-1', defaultAmount: 2000, effectiveDate: settings.effectiveDate, summary: 'Initial payment amount set to ₹2,000' },
   ];
 
-  // Donations recorded by BL admins for voters in their own wards over the last 30 days.
-  const transactions: DonationTransaction[] = [];
+  // Payments recorded by Corporators and BLOs for voters in their own area over the last 30 days.
+  const transactions: PaymentTransaction[] = [];
   const audit: AuditLog[] = [];
   let txnSeq = 0;
   let auditSeq = 0;
-  const recorders = admins.filter((a) => a.role === 'BL_ADMIN' && a.status === 'Active');
+  const recorders = admins.filter((a) => a.role !== 'SUPER_ADMIN' && a.status === 'Active');
+  const boothWard = new Map(booths.map((b) => [b.id, b.wardId]));
   const received = new Set<string>();
   for (let i = 0; i < 70; i++) {
     const admin = pick(recorders);
     const pool = voters.filter(
-      (v) => admin.wardIds.includes(v.wardId) && (admin.boothIds.length === 0 || admin.boothIds.includes(v.boothId)) && !received.has(v.recordId),
+      (v) => coversVoter(admin, v.wardId, v.boothId, (b) => boothWard.get(b)) && !received.has(v.recordId),
     );
     if (!pool.length) continue;
     const voter = pick(pool);
@@ -159,7 +167,7 @@ export function seedDb(): MockDb {
     txnSeq++;
     const ts = iso(Math.floor(rand() * 30 * day));
     const self = rand() < 0.7;
-    const tx: DonationTransaction = {
+    const tx: PaymentTransaction = {
       id: `TXN-${pad(txnSeq, 6)}`,
       voterRecordId: voter.recordId,
       voterId: voter.voterId,
@@ -183,8 +191,8 @@ export function seedDb(): MockDb {
       timestamp: ts,
       adminId: admin.id,
       adminName: admin.fullName,
-      action: 'Donation recorded',
-      entity: 'Donation',
+      action: 'Payment recorded',
+      entity: 'Payment',
       recordRef: tx.id,
       result: 'Success',
       summary: `₹${tx.amount.toLocaleString('en-IN')} to ${tx.receiverName} for voter ${voter.voterId}`,
@@ -206,7 +214,8 @@ export function seedDb(): MockDb {
     settings,
     settingsHistory,
     idempotency: {},
-    counters: { admin: 4, voter: voterSeq, txn: txnSeq, audit: auditSeq, ward: wards.length, booth: booths.length, settings: 1 },
+    bloCounters: { 'C-1': 2, 'C-2': 1, 'C-3': 1 },
+    counters: { superAdmin: 1, corporator: 4, voter: voterSeq, txn: txnSeq, audit: auditSeq, ward: wards.length, booth: booths.length, settings: 1 },
   };
 }
 

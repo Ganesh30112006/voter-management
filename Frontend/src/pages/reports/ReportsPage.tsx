@@ -14,7 +14,7 @@ import { reportService } from '../../services/reportService';
 import type { GroupRow, ReportData, ReportFilters } from '../../types';
 import { downloadCsv, downloadXlsx, type Cell } from '../../utils/download';
 import { formatCurrency, formatNumber } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 import './ReportsPage.css';
 
 const GROUP_HEADERS = ['Name', 'Voters', 'Active', 'Not Active', 'Shifted', 'Received', 'Not Received', 'Transactions', 'Amount (INR)'];
@@ -106,7 +106,7 @@ export function ReportsPage() {
   const admin = useCurrentAdmin();
   const superAdmin = isSuperAdmin(admin);
   const toast = useToast();
-  const { wards, boothsForWard } = useWards();
+  const { wards, booths } = useWards();
   const [filters, setFilters] = useState<ReportFilters>({ from: '', to: '', wardId: '', boothId: '', adminId: '' });
   const [admins, setAdmins] = useState<AdminOption[]>([]);
   const [exporting, setExporting] = useState(false);
@@ -126,7 +126,7 @@ export function ReportsPage() {
     setExporting(true);
     try {
       // The backend logs the export in the audit trail before the file is produced.
-      await reportService.logExport('Donation & voter report', format);
+      await reportService.logExport('Payment & voter report', format);
       const sheets = sheetsFor(data);
       if (format === 'Excel') {
         downloadXlsx('report.xlsx', sheets);
@@ -154,7 +154,7 @@ export function ReportsPage() {
     <>
       <PageHeader
         title={superAdmin ? 'Reports & Analytics' : 'Reports'}
-        description={superAdmin ? 'Voter and donation reports across all wards.' : 'Reports for your assigned wards.'}
+        description={superAdmin ? 'Voter and payment reports across all wards.' : 'Reports for your assigned area.'}
         actions={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => exportAs('CSV')} disabled={!data || exporting}>
@@ -180,7 +180,7 @@ export function ReportsPage() {
           <span className="field-label">Ward</span>
           <select className="select" value={filters.wardId} onChange={(e) => set({ wardId: e.target.value, boothId: '' })}>
             <option value="">{superAdmin ? 'All wards' : 'All my wards'}</option>
-            {(superAdmin ? wards : wards.filter((w) => admin.wardIds.includes(w.id))).map((w) => (
+            {wardsInArea(admin, wards).map((w) => (
               <option key={w.id} value={w.id}>
                 Ward {w.number}
               </option>
@@ -191,7 +191,7 @@ export function ReportsPage() {
           <span className="field-label">Booth</span>
           <select className="select" value={filters.boothId} disabled={!filters.wardId} onChange={(e) => set({ boothId: e.target.value })}>
             <option value="">{filters.wardId ? 'All booths' : 'Select a ward first'}</option>
-            {(filters.wardId ? boothsForWard(filters.wardId) : []).map((b) => (
+            {(filters.wardId ? boothsInArea(admin, filters.wardId, booths) : []).map((b) => (
               <option key={b.id} value={b.id}>
                 Booth {b.number}
               </option>
@@ -239,7 +239,7 @@ export function ReportsPage() {
                     ]}
                   />
                 </ChartCard>
-                <ChartCard title="Donation status" subtitle="Unique voters" empty={!data.summary.totalVoters}>
+                <ChartCard title="Payment status" subtitle="Unique voters" empty={!data.summary.totalVoters}>
                   <StatusDonut
                     data={[
                       { name: 'Received', value: data.summary.votersReceived, color: CHART.green },

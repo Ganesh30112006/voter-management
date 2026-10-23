@@ -1,20 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { onSessionExpired } from '../services/apiError';
 import { authService } from '../services/authService';
 import { tokenStorage } from '../services/tokenStorage';
 import type { Admin } from '../types';
-
-interface AuthState {
-  admin: Admin | null;
-  initializing: boolean;
-  /** Set when the user was signed out because the session expired. */
-  sessionExpired: boolean;
-  login: (mobile: string, password: string, remember: boolean) => Promise<void>;
-  logout: () => Promise<void>;
-  refresh: () => Promise<void>;
-}
-
-const AuthContext = createContext<AuthState | null>(null);
+import { AuthContext, type AuthState } from './authContext';
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [admin, setAdmin] = useState<Admin | null>(null);
@@ -50,8 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const login = useCallback(async (mobile: string, password: string, remember: boolean) => {
-    const res = await authService.login(mobile, password, remember);
+  const login = useCallback(async (identifier: string, password: string, remember: boolean) => {
+    const res = await authService.login(identifier, password, remember);
     tokenStorage.set(res.token, remember);
     setSessionExpired(false);
     setAdmin(res.admin);

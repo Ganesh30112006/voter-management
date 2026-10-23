@@ -1,0 +1,21 @@
+# AWS Amplify Hosting build for the Voter Desk frontend (the real backend, no mock).
+# Set VITE_API_BASE_URL in Amplify > Environment variables (e.g. https://api.example.org/api, or /api with a proxy rewrite).
+version: 1
+applications:
+  - appRoot: Frontend
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            # .env.production turns the mock off, and the app refuses to start if a production build enables it.
+            - npm run build
+      artifacts:
+        baseDirectory: dist
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - node_modules/**/*

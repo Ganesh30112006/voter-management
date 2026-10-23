@@ -15,7 +15,7 @@ import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { authService } from '../../services/authService';
 import { formatDate, formatDateTime } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { isSuperAdmin, ROLE_LABELS } from '../../utils/permissions';
 import { PASSWORD_RULES, passwordSchema, type PasswordFormValues } from '../../utils/validation';
 
 export function ProfilePage() {
@@ -38,7 +38,7 @@ export function ProfilePage() {
               </div>
               <div>
                 <dt>Role</dt>
-                <dd>{isSuperAdmin(admin) ? 'Super Admin' : 'BL Admin'}</dd>
+                <dd>{ROLE_LABELS[admin.role]}{admin.corporatorId ? ` (under ${admin.corporatorId})` : ''}</dd>
               </div>
               <div>
                 <dt>Full name</dt>
@@ -48,6 +48,12 @@ export function ProfilePage() {
                 <dt>Mobile (login)</dt>
                 <dd>{admin.mobile}</dd>
               </div>
+              {admin.role === 'CORPORATOR' && (
+                <div>
+                  <dt>Location</dt>
+                  <dd>{admin.location || '—'}</dd>
+                </div>
+              )}
               {!isSuperAdmin(admin) && (
                 <>
                   <div>

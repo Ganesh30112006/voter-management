@@ -179,8 +179,8 @@ export function WardsPage() {
       {dialog?.kind === 'assignWard' && (
         <AssignAdminsModal
           target={{ kind: 'ward', id: dialog.ward.id }}
-          title={`Admins for Ward ${dialog.ward.number}`}
-          description="Selected BL Admins see this ward under My Ward Voters. Removing an admin also removes their booth assignments in this ward."
+          title={`Corporators for Ward ${dialog.ward.number}`}
+          description="Selected Corporators see and pay the voters of this ward. Removing a Corporator also removes this ward from its BLOs."
           assigned={dialog.ward.adminIds}
           onClose={() => setDialog(null)}
           onSaved={() => afterChange(`Ward ${dialog.ward.number} assignment saved.`)}
@@ -188,9 +188,9 @@ export function WardsPage() {
       )}
       {dialog?.kind === 'assignBooth' && (
         <AssignAdminsModal
-          target={{ kind: 'booth', id: dialog.booth.id }}
-          title={`Admins for Booth ${dialog.booth.number}`}
-          description={`Limits the selected admins to specific booths in Ward ${dialog.wardNumber}. The ward is assigned automatically.`}
+          target={{ kind: 'booth', id: dialog.booth.id, wardId: dialog.booth.wardId }}
+          title={`BLOs for Booth ${dialog.booth.number}`}
+          description={`Selected BLOs see and pay the voters of this booth in Ward ${dialog.wardNumber}. Only BLOs whose Corporator covers this ward are listed.`}
           assigned={dialog.booth.adminIds}
           onClose={() => setDialog(null)}
           onSaved={() => afterChange(`Booth ${dialog.booth.number} assignment saved.`)}

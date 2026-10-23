@@ -9,7 +9,7 @@ import { ApiError, errorMessage } from '../../services/apiError';
 import type { Admin } from '../../types';
 import { PASSWORD_RULES, setPasswordSchema, type SetPasswordValues } from '../../utils/validation';
 
-/** Super Admin sets a new password for a BL Admin. */
+/** The Super Admin, or a BLO's Corporator, sets a new password for a Corporator or BLO. */
 export function SetPasswordModal({ admin, onClose, onDone }: { admin: Admin; onClose: () => void; onDone: () => void }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const {

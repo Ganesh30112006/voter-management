@@ -4,34 +4,34 @@ import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
-import { donationService } from '../../services/donationService';
-import type { DonationContext, DonationTransaction, VoterListItem } from '../../types';
+import { paymentService } from '../../services/paymentService';
+import type { PaymentContext, PaymentTransaction, VoterListItem } from '../../types';
 import { formatCurrency, formatDateTime } from '../../utils/format';
 import { randomId } from '../../utils/id';
-import { donationSchema, type DonationFormValues } from '../../utils/validation';
-import { DonationStatusBadge, VoterStatusBadge } from '../common/Badges';
+import { paymentSchema, type PaymentFormValues } from '../../utils/validation';
+import { PaymentStatusBadge, VoterStatusBadge } from '../common/Badges';
 import { FormField } from '../common/FormField';
 import { Modal } from '../common/Modal';
 import { SkeletonLines } from '../common/States';
-import './Donations.css';
+import './Payments.css';
 
 interface Props {
   voter: VoterListItem;
   onClose: () => void;
   /** Called once the backend has confirmed the transaction. */
-  onRecorded: (tx: DonationTransaction) => void;
+  onRecorded: (tx: PaymentTransaction) => void;
 }
 
 type Step = 'form' | 'confirm' | 'done';
 
-export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
+export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
   const { wardLabel, boothLabel } = useWards();
-  const [ctx, setCtx] = useState<DonationContext | null>(null);
+  const [ctx, setCtx] = useState<PaymentContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('form');
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-  const [saved, setSaved] = useState<DonationTransaction | null>(null);
+  const [saved, setSaved] = useState<PaymentTransaction | null>(null);
   // One key per modal: a retry after a network error can never create a second transaction.
   const idempotencyKey = useRef(randomId());
 
@@ -42,14 +42,14 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
     setError,
     getValues,
     formState: { errors },
-  } = useForm<DonationFormValues>({
-    resolver: zodResolver(donationSchema),
+  } = useForm<PaymentFormValues>({
+    resolver: zodResolver(paymentSchema),
     defaultValues: { amount: '', receiverName: '', receiverMobile: '' },
   });
 
   useEffect(() => {
     let active = true;
-    donationService
+    paymentService
       .context()
       .then((c) => {
         if (!active) return;
@@ -62,7 +62,7 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
     };
   }, [setValue]);
 
-  const alreadyReceived = voter.donationStatus === 'Received';
+  const alreadyReceived = voter.paymentStatus === 'Received';
 
   // Only on request: the receiver may be someone other than the voter.
   const fillFromVoter = () => {
@@ -71,11 +71,11 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
   };
 
   const save = async () => {
-    const values = donationSchema.parse(getValues());
+    const values = paymentSchema.parse(getValues());
     setSubmitting(true);
     setServerError(null);
     try {
-      const tx = await donationService.record({
+      const tx = await paymentService.record({
         voterRecordId: voter.recordId,
         amount: values.amount,
         receiverName: values.receiverName,
@@ -121,24 +121,20 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
         <button type="button" className="btn btn-secondary" onClick={onClose}>
           Cancel
         </button>
-        <button type="submit" form="donation-form" className="btn btn-primary" disabled={!ctx || alreadyReceived}>
-          Save Donation
+        <button type="submit" form="payment-form" className="btn btn-primary" disabled={!ctx || alreadyReceived}>
+          Save Payment
         </button>
       </>
     );
 
   return (
-    <Modal title={step === 'done' ? 'Donation recorded' : 'Record donation'} onClose={onClose} footer={footer} locked={submitting}>
+    <Modal title={step === 'done' ? 'Payment recorded' : 'Record payment'} onClose={onClose} footer={footer} locked={submitting}>
       {step === 'done' && saved ? (
-        <div className="donation-success">
-          <CheckCircle2 size={52} className="donation-success-icon" aria-hidden="true" />
-          <p className="donation-success-title">✓ Received</p>
+        <div className="payment-success">
+          <CheckCircle2 size={52} className="payment-success-icon" aria-hidden="true" />
+          <p className="payment-success-title">✓ Received</p>
           <p className="muted small">Saved by the server. The voter is now marked as Received.</p>
-          <dl className="detail-grid donation-receipt">
-            <div>
-              <dt>Transaction ID</dt>
-              <dd>{saved.id}</dd>
-            </div>
+          <dl className="detail-grid payment-receipt">
             <div>
               <dt>Amount</dt>
               <dd>{formatCurrency(saved.amount)}</dd>
@@ -171,7 +167,7 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
                 <p className="voter-summary-name">{voter.fullName}</p>
                 <p className="muted small">{voter.voterId}</p>
               </div>
-              <DonationStatusBadge status={voter.donationStatus} />
+              <PaymentStatusBadge status={voter.paymentStatus} />
             </div>
             <dl className="voter-summary-meta">
               <div>
@@ -198,7 +194,7 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
           {alreadyReceived && (
             <div className="alert alert-warning">
               <AlertTriangle size={18} aria-hidden="true" />
-              This voter has already received a donation. A second donation cannot be recorded.
+              This voter has already received a payment. A second payment cannot be recorded.
             </div>
           )}
           {serverError && (
@@ -239,18 +235,18 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
           ) : !ctx && !ctxError ? (
             <SkeletonLines rows={3} />
           ) : (
-            <form id="donation-form" className="stack" noValidate onSubmit={handleSubmit(() => setStep('confirm'))}>
+            <form id="payment-form" className="stack" noValidate onSubmit={handleSubmit(() => setStep('confirm'))}>
               <FormField
                 label="Amount (₹)"
                 error={errors.amount?.message}
                 required
-                hint={ctx?.amountEditable ? 'Prefilled with the configured amount. You may change it.' : 'Fixed by the configured donation amount.'}
+                hint={ctx?.amountEditable ? 'Prefilled with the configured amount. You may change it.' : 'Fixed by the configured payment amount.'}
               >
                 <input className="input" type="number" inputMode="numeric" min={1} step={1} readOnly={!ctx?.amountEditable} {...register('amount')} />
               </FormField>
 
               <div className="row" style={{ justifyContent: 'space-between' }}>
-                <span className="small muted">Who is receiving the donation?</span>
+                <span className="small muted">Who is receiving the payment?</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={fillFromVoter}>
                   <UserCheck size={14} aria-hidden="true" /> Receiver is the voter
                 </button>
@@ -264,7 +260,7 @@ export function RecordDonationModal({ voter, onClose, onRecorded }: Props) {
                 <input className="input" type="tel" inputMode="numeric" autoComplete="off" placeholder="10-digit mobile" maxLength={14} {...register('receiverMobile')} />
               </FormField>
 
-              <p className="small muted">Timestamp, transaction ID and your admin details are recorded automatically.</p>
+              <p className="small muted">The date, time and your account are recorded automatically.</p>
             </form>
           )}
         </div>

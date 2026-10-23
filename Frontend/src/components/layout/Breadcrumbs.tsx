@@ -1,13 +1,16 @@
 import { ChevronRight } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
-import { PAGE_TITLES } from './navigation';
+import { useCurrentAdmin } from '../../hooks/useAuth';
+import { navFor, PAGE_TITLES } from './navigation';
 
 export function Breadcrumbs() {
   const { pathname } = useLocation();
+  // The sidebar label for this role wins (a Corporator's "/administrators" is "My BLOs").
+  const navLabels = new Map(navFor(useCurrentAdmin()).map((i) => [i.path, i.label]));
   const segments = pathname.split('/').filter(Boolean);
   const crumbs = segments.map((_, i) => {
     const path = '/' + segments.slice(0, i + 1).join('/');
-    return { path, label: PAGE_TITLES[path] ?? segments[i] };
+    return { path, label: navLabels.get(path) ?? PAGE_TITLES[path] ?? segments[i] };
   });
 
   return (

@@ -10,14 +10,15 @@ import { auditService } from '../../services/auditService';
 import type { AuditLog, AuditQuery } from '../../types';
 import { formatDateTime } from '../../utils/format';
 
-const ENTITIES: AuditLog['entity'][] = ['Admin', 'Ward', 'Booth', 'Voter', 'Import', 'Donation', 'Settings', 'Export', 'Auth'];
+const ENTITIES: AuditLog['entity'][] = ['Admin', 'Ward', 'Booth', 'Voter', 'Import', 'Payment', 'Settings', 'Export', 'Auth'];
 
 const COLUMNS: Column<AuditLog>[] = [
   { key: 'ts', header: 'Timestamp', render: (a) => <span className="nowrap">{formatDateTime(a.timestamp)}</span> },
   { key: 'admin', header: 'Admin ID', render: (a) => <span className="mono">{a.adminId}</span> },
   { key: 'name', header: 'Admin Name', render: (a) => a.adminName },
   { key: 'action', header: 'Action', render: (a) => <strong>{a.action}</strong> },
-  { key: 'record', header: 'Affected Record', render: (a) => <span className="mono">{a.recordRef}</span> },
+  // Cash payments have no number people use; the summary names the voter instead.
+  { key: 'record', header: 'Affected Record', render: (a) => (a.entity === 'Payment' ? <span className="muted">Payment</span> : <span className="mono">{a.recordRef}</span>) },
   { key: 'result', header: 'Result', render: (a) => <span className={`badge ${a.result === 'Success' ? 'badge-success' : 'badge-danger'}`}>{a.result}</span> },
   { key: 'summary', header: 'Change Summary', render: (a) => <span className="small">{a.summary}</span> },
 ];

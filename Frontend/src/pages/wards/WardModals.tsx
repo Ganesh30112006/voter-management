@@ -144,7 +144,7 @@ export function BoothFormModal({
   );
 }
 
-/** Choose which BL Admins are assigned to a ward or booth. */
+/** Choose which Corporators cover a ward, or which BLOs work a booth (only BLOs whose Corporator covers that ward). */
 export function AssignAdminsModal({
   target,
   title,
@@ -153,7 +153,7 @@ export function AssignAdminsModal({
   onClose,
   onSaved,
 }: {
-  target: { kind: 'ward' | 'booth'; id: string };
+  target: { kind: 'ward'; id: string } | { kind: 'booth'; id: string; wardId: string };
   title: string;
   description: string;
   assigned: string[];
@@ -168,9 +168,17 @@ export function AssignAdminsModal({
 
   useEffect(() => {
     let active = true;
-    adminService
-      .list({ pageSize: 500, sortBy: 'id' })
-      .then((r) => active && setAdmins(r.items))
+    const load = async (): Promise<Admin[]> => {
+      if (target.kind === 'ward') return (await adminService.list({ role: 'CORPORATOR', pageSize: 500, sortBy: 'id' })).items;
+      const [blos, corporators] = await Promise.all([
+        adminService.list({ role: 'BLO', pageSize: 500, sortBy: 'id' }),
+        adminService.list({ role: 'CORPORATOR', pageSize: 500, sortBy: 'id' }),
+      ]);
+      const coversWard = new Set(corporators.items.filter((c) => c.wardIds.includes(target.wardId)).map((c) => c.id));
+      return blos.items.filter((b) => coversWard.has(b.corporatorId ?? '') || assigned.includes(b.id));
+    };
+    load()
+      .then((list) => active && setAdmins(list))
       .catch((e) => active && setLoadError(errorMessage(e)));
     return () => {
       active = false;
@@ -215,7 +223,11 @@ export function AssignAdminsModal({
         {!admins && !loadError ? (
           <SkeletonLines rows={4} height={28} />
         ) : admins?.length === 0 ? (
-          <p className="small muted">No BL Admins yet. Create one on the Administrators page.</p>
+          <p className="small muted">
+            {target.kind === 'ward'
+              ? 'No Corporators yet. Create one on the Accounts page.'
+              : "No BLOs available. A BLO can only work booths in its Corporator's wards."}
+          </p>
         ) : (
           <div className="check-list" style={{ flexDirection: 'column', maxHeight: 320 }}>
             {admins?.map((a) => (

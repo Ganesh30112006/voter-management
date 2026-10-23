@@ -35,8 +35,19 @@ export const optionalMobileSchema = z
   .refine((v) => v === '' || isValidIndianMobile(v), 'Enter a valid 10-digit Indian mobile number')
   .transform((v) => (v === '' ? '' : normalizeMobile(v)));
 
+/** Names are compared ignoring case and extra spaces ("ramesh  BABU" = "Ramesh Babu"). */
+export function nameKey(name: string): string {
+  return (name ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** Sign in with a mobile number or a full name. Names may repeat; the password tells same-named accounts apart. */
 export const loginSchema = z.object({
-  mobile: mobileSchema,
+  identifier: z
+    .string()
+    .trim()
+    .min(1, 'Enter your mobile number or full name')
+    .max(100, 'Too long')
+    .transform((v) => (isValidIndianMobile(v) ? normalizeMobile(v) : v.replace(/\s+/g, ' '))),
   password: z.string().min(1, 'Password is required'),
   remember: z.boolean(),
 });
@@ -83,30 +94,37 @@ export type VoterFormValues = Omit<z.input<typeof voterSchema>, "status"> & { st
 export const adminSchema = z.object({
   fullName: z.string().trim().min(2, 'Full name is required').max(100),
   mobile: mobileSchema,
+  location: z.string().trim().max(200, 'Use at most 200 characters'),
   wardIds: z.array(z.string()).min(1, 'Assign at least one ward'),
   boothIds: z.array(z.string()),
 });
-export type AdminFormValues = z.input<typeof adminSchema> & { password?: string; confirmPassword?: string };
+export type AdminFormValues = z.input<typeof adminSchema> & { password?: string; confirmPassword?: string; corporatorId?: string };
 
-export const adminCreateSchema = adminSchema
-  .extend({ password: newPasswordSchema, confirmPassword: z.string() })
-  .refine((v) => v.password === v.confirmPassword, { message: 'Passwords do not match', path: ['confirmPassword'] });
+const passwordFields = { password: newPasswordSchema, confirmPassword: z.string() };
+const passwordsMatch = (v: { password: string; confirmPassword: string }) => v.password === v.confirmPassword;
+const mismatch = { message: 'Passwords do not match', path: ['confirmPassword'] };
 
-export const MAX_DONATION_AMOUNT = 100000;
+export const adminCreateSchema = adminSchema.extend(passwordFields).refine(passwordsMatch, mismatch);
+
+/** Super Admins cover everything, so they have no wards. */
+export const superAdminSchema = adminSchema.extend({ wardIds: z.array(z.string()) });
+export const superAdminCreateSchema = superAdminSchema.extend(passwordFields).refine(passwordsMatch, mismatch);
+
+export const MAX_PAYMENT_AMOUNT = 100000;
 
 const amountSchema = z.coerce
   .number({ invalid_type_error: 'Enter an amount' })
   .int('Amount must be a whole number of rupees')
   .positive('Amount must be greater than zero')
-  .max(MAX_DONATION_AMOUNT, `Amount cannot exceed ₹${MAX_DONATION_AMOUNT.toLocaleString('en-IN')}`);
+  .max(MAX_PAYMENT_AMOUNT, `Amount cannot exceed ₹${MAX_PAYMENT_AMOUNT.toLocaleString('en-IN')}`);
 
-export const donationSchema = z.object({
+export const paymentSchema = z.object({
   amount: amountSchema,
   receiverName: z.string().trim().min(2, 'Receiver name is required').max(100),
   receiverMobile: mobileSchema,
 });
 /** Form state keeps numeric inputs as text; the schema converts them on submit. */
-export type DonationFormValues = { amount: string; receiverName: string; receiverMobile: string };
+export type PaymentFormValues = { amount: string; receiverName: string; receiverMobile: string };
 
 export const passwordSchema = z
   .object({

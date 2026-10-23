@@ -14,7 +14,9 @@ export function LoginPage() {
   const { admin, login, sessionExpired } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: string } | null)?.from ?? '/';
+  const requested = (location.state as { from?: string } | null)?.from ?? '/';
+  // Only return to a path on this site: "//host" or "/\host" would leave it.
+  const from = /^\/(?![/\\])/.test(requested) ? requested : '/';
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -22,7 +24,7 @@ export function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { mobile: '', password: '', remember: false } });
+  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { identifier: '', password: '', remember: false } });
 
   if (admin) return <Navigate to={from} replace />;
 
@@ -30,7 +32,7 @@ export function LoginPage() {
     setServerError(null);
     try {
       const parsed = loginSchema.parse(values);
-      await login(parsed.mobile, parsed.password, parsed.remember);
+      await login(parsed.identifier, parsed.password, parsed.remember);
       navigate(from, { replace: true });
     } catch (e) {
       setServerError(errorMessage(e));
@@ -66,8 +68,8 @@ export function LoginPage() {
         )}
 
         <form className="stack" onSubmit={handleSubmit(onSubmit)} noValidate>
-          <FormField label="Mobile number" error={errors.mobile?.message} required>
-            <input className="input" type="tel" inputMode="numeric" autoComplete="username" placeholder="10-digit mobile number" maxLength={14} {...register('mobile')} />
+          <FormField label="Mobile number or full name" error={errors.identifier?.message} required>
+            <input className="input" autoComplete="username" placeholder="10-digit mobile or your full name" maxLength={100} {...register('identifier')} />
           </FormField>
 
           <div className="field">
@@ -113,8 +115,8 @@ export function LoginPage() {
 
         {USE_MOCK && (
           <p className="auth-dev-note">
-            Development mode: Super Admin <strong>9000000001</strong>, BL-1 <strong>9876543210</strong>, BL-2 <strong>9876500011</strong>, BL-3{' '}
-            <strong>9123456780</strong>. Password: the value of <code>VITE_MOCK_PASSWORD</code>.
+            Development mode: Super Admin <strong>9000000001</strong>, Corporator C-1 <strong>9876543210</strong>, BLO C-1-BLO1{' '}
+            <strong>9876543211</strong>. Password: the value of <code>VITE_MOCK_PASSWORD</code>.
           </p>
         )}
       </div>

@@ -3,7 +3,17 @@
 Session memory for this project. Read it fully before starting work.
 
 - Repo: https://github.com/Ganesh30112006/voter-management (branch `main`)
-- Layout: `Frontend/` (done) · `Backend/` (not started)
+- Layout: `Frontend/` (done) · `Backend/` (done: Node + TypeScript + Express + PostgreSQL, for AWS. Frontend on AWS Amplify, backend as a plain Node app on AWS Elastic Beanstalk with RDS PostgreSQL. **No Docker**: the user rejected it; tests use the `embedded-postgres` npm package)
+
+> **Role & naming change (user, 2026-10-23). This overrides any older "BL Admin" / "donation" wording in this file.**
+> - Roles: **Super Admin** (unchanged) → **Corporator** (was BL Admin; IDs `C-1`, `C-2`, …) → **BLO** (Booth Level Officer; IDs `C-<n>-BLO<m>`, e.g. `C-1-BLO1` = first BLO of C-1).
+> - The Super Admin creates Corporators and assigns their wards. A **Corporator creates its own BLOs** and assigns them to wards/booths **inside the Corporator's wards**. The Super Admin can manage every BLO.
+> - Scope: **BLOs see and record payments only for voters in their assigned booths. Corporators see and record payments for voters in their wards.** This replaces old rule 9 ("donate to any voter").
+> - **"Donation" is renamed "Payment" everywhere**: UI text, API paths (`/payments`), backend tables and code.
+> - **Payments are cash in hand: no transaction ID is shown anywhere** (screens, search, exports, audit "Affected Record"). The server still keeps an internal `TXN-000001` reference for linking, cancel/reverse and idempotency.
+> - **Corporators have a Location** (free text, optional, max 200 chars) that the Super Admin enters when creating/editing them. BLOs have none (`location: ''`).
+> - **A Super Admin can create more Super Admins** (user, 2026-10-24): IDs `SA-2`, `SA-3`, … (counter `super_admin`, migration 002); name + mobile + password only (no wards/location); full rights. A Super Admin manages every account **except its own** (that is My Profile), so one active Super Admin always remains.
+> - **Import accepts Excel, CSV and PDF** (user, 2026-10-24): a typed PDF table with headings, or the Election Commission electoral-roll layout (EPIC, name, house no.; Ward/Booth/Status chosen for the whole file, booth prefilled from "Part No."). PDFs are read in the browser (pdf.js); scanned PDFs are rejected (no OCR).
 
 ---
 
@@ -22,8 +32,8 @@ A system for an organization that distributes donations to voters.
 3. Keep the UI **simple and plain**: white/light-gray background, navy sidebar, blue primary, green = received/active, gray = not active, amber = shifted, red = errors.
 4. **No campaigns** of any kind: no campaign names, no campaign settings or filters.
 5. Donation status is only **Received ✓ / Not Received**. A donation records **timestamp, receiver name, receiver mobile** (plus amount; the user confirmed keeping amount).
-6. If a voter has received a donation, show **only a tick** (click → transaction details). Otherwise show a **Donate** button. **One successful donation per voter**, no repeats. A Super Admin can cancel/reverse a mistaken one, and the voter goes back to Not Received.
-7. **Login = mobile number + password set by the Super Admin.** No forgot-password feature.
+6. If a voter has received a donation, show **only a tick** (click → transaction details). Otherwise show a **Donate** button. **One successful donation per voter**, no repeats. **The receiver is not limited**: one person (e.g. the head of a household) may receive for several voters, so never add a uniqueness check on receiver name/mobile. A Super Admin can cancel/reverse a mistaken one, and the voter goes back to Not Received.
+7. **Login = mobile number OR full name, + password** (set by the Super Admin, or by a BLO's Corporator). Names may repeat; the password tells same-named accounts apart, so **a password that another account with the same name (case/space-insensitive) already uses is rejected** on create, reset and change. If a rename ever makes name+password ambiguous, name login asks for the mobile number. No forgot-password feature. API body: `POST /auth/login {identifier, password, remember}`.
 8. **Super Admin can change any admin's password.** BL Admins can also change their own (My Profile).
 9. **BL Admins can donate to any voter** (not only their wards).
 10. **Permissions are the same for every BL Admin**; there are no per-admin permission checkboxes. Only the Super Admin manages admins, wards/booths, voters (add/edit), imports, settings and audit logs.
@@ -31,81 +41,38 @@ A system for an organization that distributes donations to voters.
 12. Stack: React + TypeScript + Vite, plain CSS files (**no Tailwind**), React Router, Axios, React Hook Form + Zod, Recharts, Lucide icons, SheetJS (xlsx).
 13. Commit/push only when asked. End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
-## 3. What is built (Frontend — complete)
+## 3. Frontend (complete)
 
-Run: `cd Frontend && npm install && npm run dev` → http://localhost:5173 (uses the in-browser mock backend).
-Checks: `npm run typecheck`, `npm test` (35 Vitest tests), `npm run build`. All pass.
+Run with the mock: `cd Frontend && npm install && npm run dev` → http://localhost:5173.
+Against the real API: `VITE_USE_MOCK=false VITE_API_BASE_URL=http://localhost:4000/api npx vite` (or edit `.env.development`).
+Checks: `npm run typecheck`, `npm test` (54 Vitest tests), `npm run build`. All pass.
 
-Dev logins (mock only, password `demo@123` from `VITE_MOCK_PASSWORD`): Super Admin `9000000001`; BL-1 `9876543210` (wards 1–2); BL-2 `9876500011` (ward 3); BL-3 `9123456780` (ward 4, booths 41–42); BL-4 `8098765432` (inactive).
+Dev logins (password `demo@123`; mobile **or** full name): Super Admin `9000000001` ("Super Administrator"); Corporators C-1 `9876543210` "Ramesh Babu" (wards 1–2), C-2 `9876500011` (ward 3), C-3 `9123456780` (ward 4), C-4 `8098765432` (inactive); BLOs C-1-BLO1 `9876543211` "Lakshmi Prasad" (ward 1, booths 11–12), C-1-BLO2 `9876543212` (ward 2), C-2-BLO1 `9876500012` (booth 31), C-3-BLO1 `9123456781` (booth 41). The backend demo seed has the same accounts and data.
 
-Screens: Login · Dashboard (separate SA/BL versions, charts) · Administrators (create with password, edit, change password, activate/deactivate, generated `BL-n` shown) · Wards & Booths (Ward → Booth → Voters, assign admins) · Voters (All / My Ward tabs, search/filter/sort/paginate, add/edit, household member, duplicate warnings, export) · Import (xlsx/xls/csv, signature check, sheet select, auto + manual column mapping, valid/invalid/duplicate tabs, inline correction, batched upload, summary, report download, template) · Donation Management · Donation History (filters, sort, CSV/Excel export, detail with audit trail, SA cancel/reverse) · Reports (charts + tables, CSV/Excel) · Audit Logs (read-only) · Settings (default amount, effective date, allow amount change, history) · My Profile (change password, signed-in devices).
+Screens: Login (mobile or name) · Dashboard (role-specific) · Accounts (SA: Corporators / BLOs / Super Admins tabs; Corporator: "My BLOs") · Wards & Booths (Corporators on wards, BLOs on booths) · Voters (SA: manage; others: "My Voters" in their area) · Import (Excel/CSV/PDF; heading row found below title rows; real spreadsheet row numbers) · Payment Management · Payment History (no payment ID shown; SA cancel/reverse) · Reports · Audit Logs (SA) · Settings (SA) · My Profile.
 
-Key frontend files:
-- `Frontend/src/types/index.ts`: all entity and API types (the contract)
-- `Frontend/src/services/*.ts`: one typed module per API area; each calls REST via `apiClient` or the mock when `VITE_USE_MOCK=true`
-- `Frontend/src/mocks/mockServer.ts`: **reference implementation of every backend rule** (port this logic to the backend)
-- `Frontend/src/mocks/db.ts`: seed data and mock persistence (localStorage)
-- `Frontend/src/utils/validation.ts`: Zod schemas, Indian mobile rules, password policy
-- `Frontend/src/utils/importParser.ts`: column detection and row validation for imports
+Key files: `Frontend/src/utils/importParser.ts` + `utils/pdfLayout.ts` (PDF table / electoral-roll reading) + `services/pdfReader.ts` · `Frontend/src/types/index.ts` (the API contract) · `src/services/*.ts` (REST or mock) · `src/mocks/mockServer.ts` (reference rules, mirrored by the backend) · `src/mocks/db.ts` (seed) · `src/utils/permissions.ts` (roles/scope helpers) · `src/utils/validation.ts`.
 
-**Vercel demo deployment:** the user deploys the frontend to Vercel to show it to others. The root `vercel.json` builds with `cd Frontend && npm run build:demo` (`.env.demo`: mock backend on, `VITE_DEMO_MODE=true`, demo password `demo@123`) and rewrites all routes to `index.html`. Each visitor's data lives only in their own browser. A normal `npm run build` refuses to include the mock. **When the real backend exists**, switch `vercel.json` to `npm run build` and set `VITE_API_BASE_URL` in Vercel.
+**Vercel demo:** root `vercel.json` builds `npm run build:demo` (mock on, data per browser). **AWS Amplify:** root `amplify.yml` builds the real frontend; set `VITE_API_BASE_URL` in Amplify.
 
-Testing tip: in Playwright, logging in through the form makes Chrome's "Save password?" bubble swallow later clicks. Log in by calling the mock `login()` from `page.evaluate` and putting the token in `sessionStorage['vms-token']`.
+Testing tip: in Playwright, logging in through the form makes Chrome's "Save password?" bubble swallow later clicks. Log in by calling the login API (or mock `login()`) from `page.evaluate` and putting the token in `sessionStorage['vms-token']`.
 
-## 4. Backend map (to build next — stack not chosen yet, ask the user)
+## 4. Backend (complete): `Backend/`, see `Backend/README.md`
 
-Frontend expects a REST API at `VITE_API_BASE_URL` (e.g. `http://localhost:8080/api`).
+Node + TypeScript + Express 5 + PostgreSQL (`pg`, plain SQL migrations in `Backend/migrations/`). No Docker: `npm run db:local` runs a real PostgreSQL from the `embedded-postgres` npm package (data in `Backend/.pgdata`); tests start their own. Local API port is **4000** in `Backend/.env`: on this PC, 8080 is used by Jenkins and 8090 by a Wondershare app.
+Run: `npm run db:local` (terminal 1) → `npm run seed:demo` (once) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (41 API tests against real Postgres), `npm run build`. All pass, and the full browser flow was verified against the real API.
 
-### Conventions
-- JSON everywhere. `Authorization: Bearer <token>` on every call except login.
-- Errors: `{ message: string, code?: string, fieldErrors?: { [field]: string } }`.
-  `400` validation · `401` session expired (frontend signs out) · `403` forbidden · `404` · `409` conflict (duplicates).
-- Lists: `?page&pageSize&sortBy&sortDir` → `{ items, total, page, pageSize }`.
-- Server is the source of truth for IDs, timestamps, totals and permissions. **Enforce every rule server-side.**
-- Types: see `Frontend/src/types/index.ts` (Admin, Ward, Booth, Voter, VoterListItem, DonationTransaction, AuditLog, DashboardStats, ReportData, …).
+Conventions: JSON; `Authorization: Bearer <token>` (only a SHA-256 of tokens is stored); errors `{message, code?, fieldErrors?}` with 400/401/403/404/409; lists `?page&pageSize&sortBy&sortDir` → `{items,total,page,pageSize}`; sort keys are whitelisted, everything else is parameterised.
 
-### Endpoints (SA = Super Admin only)
-| Area | Method & path | Notes |
-|---|---|---|
-| Auth | `POST /auth/login` `{mobile,password,remember}` → `{token,admin,expiresAt}` | Normalize mobile (+91/0/spaces). 401 wrong creds, 403 inactive. Session 8 h, 7 days if remember. Audit failed logins |
-| | `POST /auth/logout` · `GET /auth/me` | |
-| | `POST /auth/change-password` `{currentPassword,newPassword}` | Any admin; revokes their other sessions |
-| | `GET /auth/sessions` · `DELETE /auth/sessions/:id` · `POST /auth/sessions/revoke-others` → `{revoked}` | Sessions of the current admin only; never expose tokens |
-| Admins (SA) | `GET /admins` `?search,wardId,status` · `GET /admins/options` · `GET /admins/:id` | Lists BL Admins |
-| | `POST /admins` `{fullName,mobile,wardIds,boothIds,password}` → Admin | Server generates sequential `BL-n`; unique mobile; booths must belong to chosen wards |
-| | `PUT /admins/:id` `{fullName,mobile,wardIds,boothIds}` · `PATCH /admins/:id/status` `{status}` | Deactivate → revoke sessions |
-| | `PUT /admins/:id/password` `{password}` | SA sets a BL password → revoke that admin's sessions |
-| Wards | `GET /wards` → `{wards,booths}` (all admins) · `GET /wards/summary` (SA, counts + admin ids) | |
-| | `POST /wards`, `PUT /wards/:id` `{number,name}` (SA) | Ward number unique |
-| | `POST /booths` `{wardId,number,name}`, `PUT /booths/:id` `{number,name}` (SA) | Booth number unique within its ward; a booth never changes ward |
-| | `PUT /wards/:id/admins`, `PUT /booths/:id/admins` `{adminIds}` (SA) | Removing a ward also removes that admin's booths in it; assigning a booth adds its ward |
-| Voters | `GET /voters` `?scope=all\|mine,search,wardId,boothId,status,donationStatus,sortBy,sortDir` → VoterListItem | Adds `donationStatus`, `latestDonation`, `canRecordDonation`, `inMyWards`. Search: name, voter ID, mobile, house no., household ID |
-| | `GET /voters/:recordId` → `{voter, transactions}` | |
-| | `GET /voters/export`, `GET /voters/duplicate-check`, `POST /voters`, `PUT /voters/:recordId` (SA) | Voter ID unique (case-insensitive, keep leading zeros); booth in ward; household can't span wards; status required |
-| Imports (SA) | `GET /imports/context` → `{existingVoterIds, households}` | |
-| | `POST /imports` `{fileName}` → `{importId}` · `POST /imports/:id/rows` `{rows:[{rowNumber,voter}]}` (batches of 100) · `POST /imports/:id/complete` `{skippedBeforeUpload}` → `{imported,skipped,failed,errors}` | Re-validate every row server-side; duplicate = skipped, invalid = failed; one audit entry per import |
-| Donations | `GET /donations/context` → `{suggestedAmount, amountEditable}` | |
-| | `POST /donations` `{voterRecordId,amount,receiverName,receiverMobile,idempotencyKey}` + header `Idempotency-Key` | Server sets `TXN-` id, timestamp, admin. **409 if the voter already has a Success txn.** Same key → return the original txn. If amount changes are disabled, amount must equal the current amount |
-| | `GET /donations` `?search,from,to,wardId,boothId,adminId,status,sortBy,sortDir` · `GET /donations/export` · `GET /donations/:id` → `{transaction, audit}` | All admins can view all; `adminId` filter SA only |
-| | `POST /donations/:id/cancel` `{kind:'Cancelled'\|'Reversed', reason}` (SA) | Only from Success; keeps the record; voter becomes Not Received |
-| Reports | `GET /reports/dashboard` `?from,to,wardId,boothId` → DashboardStats | BL: voter counts scoped to assigned wards; "recorded by me" counts all their txns |
-| | `GET /reports` `?from,to,wardId,boothId,adminId` → ReportData · `POST /reports/exports` `{name,format}` (audit only) | Unique voters counted separately from transactions; only Success txns count |
-| Other | `GET /notifications` · `GET /audit-logs` `?search,entity,adminId,from,to` (SA, read-only) | |
-| Settings (SA) | `GET /settings/donation` → `{settings, history, currentAmount}` · `PUT /settings/donation` `{defaultAmount,effectiveDate,allowAmountOverride}` | Current amount = most recently saved entry whose effective date ≤ today. Never changes past txns |
+Endpoints (all under `/api`): `auth/*` (login `{identifier,password,remember}`, logout, me, change-password, sessions) · `admins` (SA + Corporators for their own BLOs; `role`, `corporatorId` filters; `options`) · `wards`, `wards/summary`, `booths`, `…/admins` assignment · `voters` (always scoped to the caller's area for non-SA), `voters/export|duplicate-check` (SA) · `imports` (SA, batches re-validated) · `payments` (`context`, record with idempotency, list/export/detail scoped, `:id/cancel` SA) · `settings/payment` (SA) · `reports/dashboard`, `reports`, `reports/exports` · `notifications` · `audit-logs` (SA) · `health`.
 
-### Suggested tables
-`admins` (id `SA-n`/`BL-n`, full_name, mobile **unique**, role, status, password_hash, created_at) · `admin_wards` · `admin_booths` · `sessions` (id, token_hash, admin_id, created_at, last_seen_at, expires_at, device) · `wards` (number unique) · `booths` (ward_id, number, unique(ward_id, number)) · `voters` (record_id, voter_id unique case-insensitive **as text**, full_name, mobile, ward_id, booth_id, house_number, household_id, address, status, timestamps) · `donation_transactions` (id, voter_record_id, voter snapshot fields, amount, receiver_name, receiver_mobile, timestamp, admin_id, admin_name, status, status_reason) with a **partial unique index on voter_record_id WHERE status = 'Success'** · `idempotency_keys` (key, txn_id) · `audit_logs` (append-only) · `donation_settings` + `settings_history`.
+Database guarantees: unique admin mobile; voter ID unique case-insensitive (text, leading zeros kept); **partial unique index: one Success payment per voter** (receiver deliberately not unique); voter row locked while paying; append-only `audit_logs` (trigger); gapless counters for `SA-n`, `C-n`, `VR-`, `TXN-`, `AUD-`; per-Corporator `blo_counter` for `C-n-BLOm`.
 
-### Validation rules (same as frontend)
-- Indian mobile: strip spaces, dashes and a +91/91/0 prefix, then `^[6-9]\d{9}$`.
-- Password: 8–64 characters with at least one letter and one digit. Hash it (bcrypt/argon2).
-- Amount: whole rupees, 1–1,00,000.
-- Voter status exactly `Active`, `Not Active` or `Shifted`.
+Scripts: `migrate`, `create-super-admin` (first SA + initial payment amount, idempotent), `seed:demo` (dev only, empty DB), `db:local`.
 
-### Audit events to record
-Login/failed login, admin create/update/activate/deactivate/password change, ward & booth create/update/assignment, voter create/update/status change, imports, donation recorded/cancelled/reversed, settings changes, exports.
+## 5. Deployment (next)
 
-## 5. Next steps
-1. Ask the user which backend stack and database to use, then scaffold `Backend/`.
-2. Implement the endpoints above, porting the rules from `Frontend/src/mocks/mockServer.ts` and its tests (`mockServer.test.ts`).
-3. Point `Frontend/.env.production` `VITE_API_BASE_URL` at the backend and test with `VITE_USE_MOCK=false`.
+Target: **AWS Elastic Beanstalk (Node.js platform) + RDS PostgreSQL** for the API, **AWS Amplify Hosting** for the frontend. `Backend/deploy/package-eb.ps1` builds `deploy/voter-desk-backend.zip` (includes the RDS CA bundle and `.ebextensions/voterdesk.config`: health check `/api/health`, `TRUST_PROXY=1`, TLS to RDS). The API runs migrations on start; run `create-super-admin` once against RDS.
+Decided (2026-10-24): region **ap-south-1 (Mumbai)**; **RDS PostgreSQL** (not DynamoDB: the backend needs SQL/transactions; >1 lakh voters measured fine: lists/search 30–130 ms, SA reports ~0.7 s with 1.5 lakh voters); **single EB instance behind CloudFront** (no domain yet; `ORIGIN_SECRET` header so only CloudFront reaches the API; `TRUST_PROXY=2`); add a load balancer + ACM certificate when the user buys a domain.
+Backend repo: **https://github.com/Ganesh30112006/khwaja_backend** (git repo inside `Backend/`, branch `main`). GitHub Actions `.github/workflows/ci-cd.yml`: tests on every push/PR; deploys to EB from `main` via OIDC once repo variables `AWS_ROLE_ARN, AWS_REGION, EB_APP, EB_ENV, EB_BUCKET, API_HEALTH_URL` are set.
+Before deploying: the user must run `aws login` (the CLI session on this PC had expired), and confirm region, instance sizes and how HTTPS is provided (a domain + ACM certificate on the load balancer, or CloudFront). Creating AWS resources costs money: always confirm first.

@@ -52,6 +52,21 @@ export function autoDetectMapping(headers: string[]): ColumnMapping {
   return mapping;
 }
 
+/** Index of the heading row: the row among the first 20 that names the most import fields (title rows may come first). */
+export function findHeaderRow(rows: string[][]): number {
+  let best = 0;
+  let bestScore = 1;
+  rows.slice(0, 20).forEach((row, i) => {
+    const m = autoDetectMapping(row);
+    const score = IMPORT_FIELDS.filter((f) => m[f.key] !== -1).length;
+    if (score > bestScore) {
+      best = i;
+      bestScore = score;
+    }
+  });
+  return best;
+}
+
 export function mappingErrors(mapping: ColumnMapping): string[] {
   const errors: string[] = [];
   for (const f of IMPORT_FIELDS) {

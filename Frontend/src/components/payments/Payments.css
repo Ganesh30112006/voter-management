@@ -41,22 +41,22 @@
   margin-bottom: 10px;
 }
 
-.donation-success {
+.payment-success {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 4px;
 }
-.donation-success-icon {
+.payment-success-icon {
   color: var(--color-success);
 }
-.donation-success-title {
+.payment-success-title {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--color-success);
 }
-.donation-receipt {
+.payment-receipt {
   width: 100%;
   margin-top: 16px;
   padding: 14px;
@@ -65,7 +65,7 @@
   text-align: left;
 }
 
-/* The tick shown in place of the Donate button. */
+/* The tick shown in place of the Pay button. */
 .received-tick {
   display: inline-flex;
   align-items: center;
