@@ -1,0 +1,30 @@
+.state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 16px;
+  text-align: center;
+}
+.state-icon {
+  color: var(--color-text-subtle);
+  margin-bottom: 4px;
+}
+.state-error .state-icon {
+  color: var(--color-danger);
+}
+.state-title {
+  font-weight: 600;
+}
+.state-message {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  max-width: 420px;
+  margin-bottom: 8px;
+}
+.skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
