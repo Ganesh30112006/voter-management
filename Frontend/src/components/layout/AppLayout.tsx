@@ -47,7 +47,10 @@ export function AppLayout() {
           <Topbar onOpenMenu={() => setMobileOpen(true)} />
           {USE_MOCK && (
             <div className="dev-banner">
-              <FlaskConical size={14} aria-hidden="true" /> Development mode — all figures are mock data.
+              <FlaskConical size={14} aria-hidden="true" />{' '}
+              {import.meta.env.VITE_DEMO_MODE === 'true'
+                ? 'Demo mode — sample data, saved only in this browser.'
+                : 'Development mode — all figures are mock data.'}
             </div>
           )}
           <main id="main" className="app-content" tabIndex={-1}>

@@ -16,6 +16,7 @@ The server records the transaction ID, timestamp and admin, and the voter shows 
 ## Install and run
 
 ```bash
+cd Frontend
 npm install
 npm run dev          # http://localhost:5173 using the in-browser mock backend
 ```
@@ -41,15 +42,23 @@ Mock data is stored in the browser's `localStorage`. Use **Settings → Reset de
 | `npm run dev` | Start the dev server |
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
 | `npm test` | Unit tests (Vitest): validation, import parsing, backend contract |
-| `npm run build` | Type-check and build for production into `dist/` |
+| `npm run build` | Type-check and build for production into `dist/` (real backend) |
+| `npm run build:demo` | Production build with the mock backend, for demo deployments |
 | `npm run preview` | Serve the production build locally |
+
+## Demo deployment (Vercel)
+
+There is no backend yet, so a normal production build has nothing to sign in against. For a shareable demo, the repo-root `vercel.json` runs `npm run build:demo`. That build includes the mock backend and shows a "Demo mode" banner. Every visitor gets their own sample data, saved only in their browser, and signs in with the demo logins above. Unknown routes are rewritten to `index.html`, so refreshing any page works.
+
+When the real backend is ready, change the build command in `vercel.json` to `npm run build` and set `VITE_API_BASE_URL` in the Vercel project.
 
 ## Environment variables
 
 | Variable | Purpose |
 |---|---|
 | `VITE_API_BASE_URL` | Base URL of the REST backend (e.g. `https://api.example.org/api`) |
-| `VITE_USE_MOCK` | `true` uses the in-browser mock backend. **Must be `false` in production**; the app refuses to start otherwise |
+| `VITE_USE_MOCK` | `true` uses the in-browser mock backend. **Must be `false` in production** unless `VITE_DEMO_MODE=true`; otherwise the app refuses to start |
+| `VITE_DEMO_MODE` | `true` only in `.env.demo`: allows the mock in a production build and shows the Demo banner |
 | `VITE_MOCK_PASSWORD` | Password for seeded mock admins (mock mode only) |
 
 `.env.development` turns the mock on; `.env.production` turns it off. When the mock is off, its code is not included in the production bundle.
