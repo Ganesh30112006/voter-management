@@ -1,4 +1,4 @@
-import { Download, Eye, FileSpreadsheet } from 'lucide-react';
+import { Eye, FileSpreadsheet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { TransactionStatusBadge } from '../../components/common/Badges';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -15,7 +15,7 @@ import { adminService, type AdminOption } from '../../services/adminService';
 import { errorMessage } from '../../services/apiError';
 import { paymentService } from '../../services/paymentService';
 import type { PaymentQuery, PaymentTransaction, TransactionStatus } from '../../types';
-import { downloadCsv, downloadXlsx, type Cell } from '../../utils/download';
+import { downloadXlsx, type Cell } from '../../utils/download';
 import { formatCurrency, formatDateTime, givenByLabel } from '../../utils/format';
 import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 
@@ -127,12 +127,11 @@ export function PaymentHistoryPage() {
     t.status,
   ];
 
-  const exportAs = async (format: 'csv' | 'xlsx') => {
+  const exportExcel = async () => {
     setExporting(true);
     try {
       const rows = (await paymentService.exportAll({ ...query, page: undefined, pageSize: undefined })).map(toRow);
-      if (format === 'csv') downloadCsv('payment-history.csv', HEADERS, rows);
-      else downloadXlsx('payment-history.xlsx', [{ name: 'Payments', headers: HEADERS, rows }]);
+      downloadXlsx('payment-history.xlsx', [{ name: 'Payments', headers: HEADERS, rows }]);
       toast.success(`Exported ${rows.length} transactions.`);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -147,14 +146,9 @@ export function PaymentHistoryPage() {
         title="Payment History"
         description="Every payment transaction, including cancelled and reversed ones."
         actions={
-          <>
-            <button type="button" className="btn btn-secondary" onClick={() => exportAs('csv')} disabled={exporting}>
-              <Download size={16} aria-hidden="true" /> CSV
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => exportAs('xlsx')} disabled={exporting}>
-              <FileSpreadsheet size={16} aria-hidden="true" /> Excel
-            </button>
-          </>
+          <button type="button" className="btn btn-secondary" onClick={exportExcel} disabled={exporting}>
+            <FileSpreadsheet size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
         }
       />
 

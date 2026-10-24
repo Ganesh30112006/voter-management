@@ -97,9 +97,12 @@ export function AdministratorsPage() {
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFormFor(a)} aria-label={`Edit ${a.id}`}>
               <Pencil size={15} aria-hidden="true" />
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPasswordFor(a)} aria-label={`Change password for ${a.id}`}>
-              <KeyRound size={15} aria-hidden="true" />
-            </button>
+            {/* A Super Admin's password is changed only by that Super Admin (My Profile). */}
+            {a.role !== 'SUPER_ADMIN' && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPasswordFor(a)} aria-label={`Change password for ${a.id}`}>
+                <KeyRound size={15} aria-hidden="true" />
+              </button>
+            )}
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleStatus(a)} aria-label={a.status === 'Active' ? `Deactivate ${a.id}` : `Activate ${a.id}`}>
               <Power size={15} aria-hidden="true" style={{ color: a.status === 'Active' ? 'var(--color-danger)' : 'var(--color-success)' }} />
             </button>
@@ -303,9 +306,11 @@ export function AdministratorsPage() {
               <button type="button" className="btn btn-secondary" onClick={() => toggleStatus(detail)}>
                 <Power size={16} aria-hidden="true" /> {detail.status === 'Active' ? 'Deactivate' : 'Activate'}
               </button>
-              <button type="button" className="btn btn-secondary" onClick={() => setPasswordFor(detail)}>
-                <KeyRound size={16} aria-hidden="true" /> Change password
-              </button>
+              {detail.role !== 'SUPER_ADMIN' && (
+                <button type="button" className="btn btn-secondary" onClick={() => setPasswordFor(detail)}>
+                  <KeyRound size={16} aria-hidden="true" /> Change password
+                </button>
+              )}
               <button type="button" className="btn btn-primary" onClick={() => setFormFor(detail)}>
                 <Pencil size={16} aria-hidden="true" /> Edit
               </button>

@@ -8,7 +8,7 @@ import { useWards } from '../../hooks/useWards';
 import { errorMessage } from '../../services/apiError';
 import { voterService } from '../../services/voterService';
 import { VOTER_STATUSES, type PaymentStatus, type Voter, type VoterListItem, type VoterQuery, type VoterStatus } from '../../types';
-import { downloadCsv } from '../../utils/download';
+import { downloadXlsx } from '../../utils/download';
 import { formatDateTime } from '../../utils/format';
 import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 import { PaymentStatusBadge, VoterStatusBadge } from '../common/Badges';
@@ -136,30 +136,32 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
     [wardLabel, boothLabel],
   );
 
-  const exportCsv = async () => {
+  const exportExcel = async () => {
     setExporting(true);
     try {
       const rows = await voterService.exportAll({ ...query, page: undefined, pageSize: undefined });
-      downloadCsv(
-        'voters.csv',
-        ['Voter ID', 'Full Name', 'Age', 'Gender', 'Ward', 'Booth', 'House / Door Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
-        rows.map((v) => [
-          v.voterId,
-          v.fullName,
-          v.age ?? '',
-          v.gender,
-          wardLabel(v.wardId),
-          boothLabel(v.boothId),
-          v.houseNumber,
-          v.householdId,
-          v.address,
-          v.status,
-          v.paymentStatus,
-          v.latestPayment?.receiverName ?? '',
-          v.latestPayment?.receiverMobile ?? '',
-          v.latestPayment ? formatDateTime(v.latestPayment.timestamp) : '',
-        ]),
-      );
+      downloadXlsx('voters.xlsx', [
+        {
+          name: 'Voters',
+          headers: ['Voter ID', 'Full Name', 'Age', 'Gender', 'Ward', 'Booth', 'House / Door Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
+          rows: rows.map((v) => [
+            v.voterId,
+            v.fullName,
+            v.age ?? '',
+            v.gender,
+            wardLabel(v.wardId),
+            boothLabel(v.boothId),
+            v.houseNumber,
+            v.householdId,
+            v.address,
+            v.status,
+            v.paymentStatus,
+            v.latestPayment?.receiverName ?? '',
+            v.latestPayment?.receiverMobile ?? '',
+            v.latestPayment ? formatDateTime(v.latestPayment.timestamp) : '',
+          ]),
+        },
+      ]);
       toast.success(`Exported ${rows.length} voters.`);
     } catch (e) {
       toast.error(errorMessage(e));
@@ -228,8 +230,8 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
           </div>
           {manage && (
             <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
-              <button type="button" className="btn btn-secondary" onClick={exportCsv} disabled={exporting}>
-                <Download size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}
+              <button type="button" className="btn btn-secondary" onClick={exportExcel} disabled={exporting}>
+                <Download size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export Excel'}
               </button>
               <button type="button" className="btn btn-primary" onClick={() => setForm({ mode: 'create' })}>
                 <Plus size={16} aria-hidden="true" /> Add voter

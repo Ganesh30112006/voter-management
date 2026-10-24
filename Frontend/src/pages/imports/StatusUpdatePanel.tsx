@@ -6,7 +6,7 @@ import { errorMessage } from '../../services/apiError';
 import { ACCEPT_ATTR, ImportFileError, readVoterIdList, validateImportFile } from '../../services/importService';
 import { voterService } from '../../services/voterService';
 import { VOTER_STATUSES, type VoterStatus } from '../../types';
-import { downloadCsv } from '../../utils/download';
+import { downloadXlsx } from '../../utils/download';
 import { formatNumber } from '../../utils/format';
 
 interface Props {
@@ -104,7 +104,8 @@ export function StatusUpdatePanel({ existingVoterIds, onUpdated }: Props) {
     }
   };
 
-  const downloadMissing = (list: string[]) => downloadCsv('voter-ids-not-found.csv', ['Voter ID'], list.map((id) => [id]));
+  const downloadMissing = (list: string[]) =>
+    downloadXlsx('voter-ids-not-found.xlsx', [{ name: 'Voter IDs', headers: ['Voter ID'], rows: list.map((id) => [id]) }]);
 
   if (result) {
     return (

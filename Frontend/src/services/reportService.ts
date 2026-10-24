@@ -8,7 +8,7 @@ export const reportService = {
   report(f: ReportFilters): Promise<ReportData> {
     return apiClient.get<ReportData>('/reports', { params: f }).then((r) => r.data);
   },
-  logExport(name: string, format: 'CSV' | 'Excel'): Promise<void> {
+  logExport(name: string, format: 'Excel'): Promise<void> {
     return apiClient.post('/reports/exports', { name, format }).then(() => undefined);
   },
   notifications(): Promise<Notification[]> {

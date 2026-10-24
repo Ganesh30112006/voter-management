@@ -1,4 +1,4 @@
-import { CheckCircle2, Download, FileSpreadsheet, IndianRupee, Receipt, Users, XCircle } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, IndianRupee, Receipt, Users, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ChartCard, CHART, SimpleBarChart, StatusDonut, TrendLineChart } from '../../components/charts/Charts';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -12,7 +12,7 @@ import { adminService, type AdminOption } from '../../services/adminService';
 import { errorMessage } from '../../services/apiError';
 import { reportService } from '../../services/reportService';
 import type { GroupRow, ReportData, ReportFilters } from '../../types';
-import { downloadCsv, downloadXlsx, type Cell } from '../../utils/download';
+import { downloadXlsx, type Cell } from '../../utils/download';
 import { formatCurrency, formatNumber } from '../../utils/format';
 import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 import './ReportsPage.css';
@@ -121,25 +121,14 @@ export function ReportsPage() {
       .catch(() => setAdmins([]));
   }, [superAdmin]);
 
-  const exportAs = async (format: 'CSV' | 'Excel') => {
+  const exportExcel = async () => {
     if (!data) return;
     setExporting(true);
     try {
       // The backend logs the export in the audit trail before the file is produced.
-      await reportService.logExport('Payment & voter report', format);
-      const sheets = sheetsFor(data);
-      if (format === 'Excel') {
-        downloadXlsx('report.xlsx', sheets);
-      } else {
-        // One CSV with each section titled and separated by a blank line.
-        const rows: Cell[][] = [];
-        sheets.forEach((sheet, i) => {
-          if (i > 0) rows.push([], [sheet.name]);
-          rows.push(...(i > 0 ? [sheet.headers] : []), ...sheet.rows);
-        });
-        downloadCsv('report.csv', sheets[0].headers, rows);
-      }
-      toast.success(`Report exported as ${format}.`);
+      await reportService.logExport('Payment & voter report', 'Excel');
+      downloadXlsx('report.xlsx', sheetsFor(data));
+      toast.success('Report exported as Excel.');
     } catch (e) {
       toast.error(errorMessage(e));
     } finally {
@@ -156,14 +145,9 @@ export function ReportsPage() {
         title={superAdmin ? 'Reports & Analytics' : 'Reports'}
         description={superAdmin ? 'Voter and payment reports across all wards.' : 'Reports for your assigned area.'}
         actions={
-          <>
-            <button type="button" className="btn btn-secondary" onClick={() => exportAs('CSV')} disabled={!data || exporting}>
-              <Download size={16} aria-hidden="true" /> CSV
-            </button>
-            <button type="button" className="btn btn-secondary" onClick={() => exportAs('Excel')} disabled={!data || exporting}>
-              <FileSpreadsheet size={16} aria-hidden="true" /> Excel
-            </button>
-          </>
+          <button type="button" className="btn btn-secondary" onClick={exportExcel} disabled={!data || exporting}>
+            <FileSpreadsheet size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export Excel'}
+          </button>
         }
       />
 

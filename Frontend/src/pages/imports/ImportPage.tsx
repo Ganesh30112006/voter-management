@@ -12,7 +12,7 @@ import { useWards } from '../../hooks/useWards';
 import { errorMessage } from '../../services/apiError';
 import { ACCEPT_ATTR, downloadTemplate, hasDataRows, ImportFileError, importService, readImportFile, sheetRows, validateImportFile } from '../../services/importService';
 import { VOTER_STATUSES, type ImportResult } from '../../types';
-import { downloadCsv } from '../../utils/download';
+import { downloadXlsx } from '../../utils/download';
 import { formatNumber } from '../../utils/format';
 import { wardsInArea } from '../../utils/permissions';
 import {
@@ -198,11 +198,13 @@ export function ImportPage() {
     setEdits((e) => ({ ...e, [rowNumber]: { ...e[rowNumber], [field]: value } }));
 
   const downloadReport = () => {
-    downloadCsv(
-      'import-validation-report.csv',
-      ['Row', ...IMPORT_FIELDS.map((f) => f.label), 'Result', 'Issues'],
-      validated.map((r) => [r.rowNumber, ...IMPORT_FIELDS.map((f) => r.values[f.key]), r.category, r.issues.map((i) => i.message).join('; ')]),
-    );
+    downloadXlsx('import-validation-report.xlsx', [
+      {
+        name: 'Validation',
+        headers: ['Row', ...IMPORT_FIELDS.map((f) => f.label), 'Result', 'Issues'],
+        rows: validated.map((r) => [r.rowNumber, ...IMPORT_FIELDS.map((f) => r.values[f.key]), r.category, r.issues.map((i) => i.message).join('; ')]),
+      },
+    ]);
   };
 
   const runImport = async () => {
@@ -723,7 +725,7 @@ export function ImportPage() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => downloadCsv('import-errors.csv', ['Row', 'Error'], result.errors.map((e) => [e.rowNumber, e.message]))}
+                    onClick={() => downloadXlsx('import-errors.xlsx', [{ name: 'Errors', headers: ['Row', 'Error'], rows: result.errors.map((e) => [e.rowNumber, e.message]) }])}
                   >
                     <Download size={14} aria-hidden="true" /> Download all {result.errors.length} errors
                   </button>
