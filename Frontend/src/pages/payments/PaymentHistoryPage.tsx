@@ -83,7 +83,7 @@ export function PaymentHistoryPage() {
       { key: 'receiver', header: 'Receiver Name', sortKey: 'receiverName', render: (t) => t.receiverName },
       { key: 'receiverMobile', header: 'Receiver Mobile', render: (t) => <span className="mono">{t.receiverMobile}</span> },
       { key: 'timestamp', header: 'Timestamp', sortKey: 'timestamp', render: (t) => <span className="nowrap">{formatDateTime(t.timestamp)}</span> },
-      { key: 'admin', header: 'Recorded By', render: (t) => <span title={t.adminName}>{t.adminId}</span> },
+      { key: 'admin', header: 'Recorded By', render: (t) => (t.adminId ? <span title={t.adminName}>{t.adminId}</span> : <span className="muted">—</span>) },
       { key: 'status', header: 'Status', render: (t) => <TransactionStatusBadge status={t.status} /> },
       {
         key: 'actions',
@@ -108,7 +108,7 @@ export function PaymentHistoryPage() {
     t.receiverName,
     t.receiverMobile,
     formatDateTime(t.timestamp),
-    `${t.adminId} (${t.adminName})`,
+    t.adminId ? `${t.adminId} (${t.adminName})` : '',
     t.status,
   ];
 

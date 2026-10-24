@@ -8,7 +8,7 @@ import { ApiError, errorMessage } from '../../services/apiError';
 import { paymentService } from '../../services/paymentService';
 import type { CancelPaymentInput, PaymentTransaction } from '../../types';
 import { formatCurrency, formatDateTime } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { canManageWardData } from '../../utils/permissions';
 import { TransactionStatusBadge } from '../common/Badges';
 import { FormField } from '../common/FormField';
 import { Modal } from '../common/Modal';
@@ -34,7 +34,8 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
   const [serverError, setServerError] = useState<string | null>(null);
 
   const tx = data?.transaction;
-  const canVoid = isSuperAdmin(admin) && tx?.status === 'Success';
+  // The Super Admin, or a Corporator for payments in its wards (the server checks the ward).
+  const canVoid = canManageWardData(admin) && tx?.status === 'Success';
 
   const submitVoid = async () => {
     if (!voidKind || !tx) return;
@@ -129,12 +130,14 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
               <dt>Receiver mobile</dt>
               <dd>{tx.receiverMobile}</dd>
             </div>
-            <div>
-              <dt>Recorded by</dt>
-              <dd>
-                {tx.adminId} · {tx.adminName}
-              </dd>
-            </div>
+            {tx.adminId && (
+              <div>
+                <dt>Recorded by</dt>
+                <dd>
+                  {tx.adminId} · {tx.adminName}
+                </dd>
+              </div>
+            )}
             {tx.statusReason && (
               <div>
                 <dt>Reason</dt>
@@ -169,7 +172,8 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
                 {data.audit.map((a) => (
                   <li key={a.id}>
                     <p className="small">
-                      <strong>{a.action}</strong> by {a.adminId}
+                      <strong>{a.action}</strong>
+                      {a.adminId && ` by ${a.adminId}`}
                     </p>
                     <p className="small muted">
                       {formatDateTime(a.timestamp)} · {a.summary}

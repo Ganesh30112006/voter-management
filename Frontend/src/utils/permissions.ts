@@ -2,8 +2,9 @@ import type { Admin, Booth, Role, Ward } from '../types';
 
 /**
  * Access model: Super Admin → Corporators (C-n) → BLOs (C-n-BLOm).
- * - The Super Admin sees everything and manages Corporators, BLOs, wards, voters, imports, settings and audit logs.
- * - A Corporator sees and records payments for voters in their wards, and manages their own BLOs.
+ * - The Super Admin sees everything and manages accounts, wards, voters, imports, settings and audit logs.
+ * - A Corporator has full control inside its own wards: voters (add, edit, import, status lists), booths, its
+ *   own BLOs, and payments (record, cancel). It never sees Super Admin accounts.
  * - A BLO sees and records payments for voters in their assigned booths (or whole wards without booths).
  * The backend enforces the same rules.
  */
@@ -12,6 +13,11 @@ export function isSuperAdmin(admin: Admin | null | undefined): boolean {
 }
 
 export function canManageBlos(admin: Admin | null | undefined): boolean {
+  return admin?.role === 'SUPER_ADMIN' || admin?.role === 'CORPORATOR';
+}
+
+/** Voters, imports, booths and payment cancellations: the Super Admin anywhere, a Corporator in its own wards. */
+export function canManageWardData(admin: Admin | null | undefined): boolean {
   return admin?.role === 'SUPER_ADMIN' || admin?.role === 'CORPORATOR';
 }
 

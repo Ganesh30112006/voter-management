@@ -25,16 +25,17 @@ export interface NavItem {
 const SA: Role[] = ['SUPER_ADMIN'];
 const CORPORATOR: Role[] = ['CORPORATOR'];
 const FIELD: Role[] = ['CORPORATOR', 'BLO'];
+const MANAGERS: Role[] = ['SUPER_ADMIN', 'CORPORATOR'];
 const ALL: Role[] = ['SUPER_ADMIN', 'CORPORATOR', 'BLO'];
 
 export const NAV_ITEMS: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ALL },
   { path: '/administrators', label: 'Accounts', icon: ShieldCheck, roles: SA },
   { path: '/administrators', label: 'My BLOs', icon: UsersRound, roles: CORPORATOR },
-  { path: '/wards', label: 'Wards & Booths', icon: MapPinned, roles: SA },
+  { path: '/wards', label: 'Wards & Booths', icon: MapPinned, roles: MANAGERS },
   { path: '/voters', label: 'Voter Management', icon: Users, roles: SA },
   { path: '/voters', label: 'My Voters', icon: Users, roles: FIELD },
-  { path: '/import', label: 'Import Voters', icon: FileUp, roles: SA },
+  { path: '/import', label: 'Import Voters', icon: FileUp, roles: MANAGERS },
   { path: '/payments', label: 'Payment Management', icon: HandCoins, roles: ALL },
   { path: '/payments/history', label: 'Payment History', icon: History, roles: ALL },
   { path: '/reports', label: 'Reports & Analytics', icon: BarChart3, roles: SA },

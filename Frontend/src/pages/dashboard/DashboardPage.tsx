@@ -137,7 +137,8 @@ export function DashboardPage() {
                         <span>
                           <strong>{t.voterName}</strong>
                           <span className="muted small recent-meta">
-                            {wardLabel(t.wardId)} · {boothLabel(t.boothId)} · to {t.receiverName} · {formatDateTime(t.timestamp)} · {t.adminId}
+                            {wardLabel(t.wardId)} · {boothLabel(t.boothId)} · to {t.receiverName} · {formatDateTime(t.timestamp)}
+                            {t.adminId && ` · ${t.adminId}`}
                           </span>
                         </span>
                         <span className="recent-right">

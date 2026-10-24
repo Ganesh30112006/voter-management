@@ -26,7 +26,9 @@ function run(rows: string[][], c = ctx()) {
 describe('column detection', () => {
   it('maps varied headings in any order', () => {
     const m = autoDetectMapping(headers);
-    expect(m).toMatchObject({ status: 0, voterId: 1, fullName: 2, wardNumber: 3, boothNumber: 4, houseNumber: 5, mobile: 6, householdId: 7, address: 8 });
+    expect(m).toMatchObject({ status: 0, voterId: 1, fullName: 2, wardNumber: 3, boothNumber: 4, houseNumber: 5, householdId: 7, address: 8 });
+    // Voters have no mobile number, so a Phone column is ignored.
+    expect(Object.values(m)).not.toContain(6);
     expect(mappingErrors(m)).toEqual([]);
   });
 
@@ -44,6 +46,30 @@ describe('row validation', () => {
     expect(r.voter).toMatchObject({ voterId: '0001234', status: 'Active', wardId: 'W1', boothId: 'B1' });
   });
 
+  it('keeps or replaces voters that already exist, as the user chooses', () => {
+    const headersAg = ['Voter ID', 'Name', 'Ward', 'House No', 'Status', 'Age', 'Gender'];
+    const rows = extractRows([['OLD1', 'New Name', '1', '5', 'Active', '44', 'స్త్రీ']], autoDetectMapping(headersAg));
+    const keep = validateRows(rows, ctx({ existingVoterIds: new Set(['OLD1']) }));
+    expect(keep[0]).toMatchObject({ category: 'duplicate', replaces: false, voter: null });
+    const replace = validateRows(rows, ctx({ existingVoterIds: new Set(['OLD1']), existingVoters: 'replace' }));
+    expect(replace[0]).toMatchObject({ category: 'valid', replaces: true, voter: { voterId: 'OLD1', fullName: 'New Name', age: 44, gender: 'Female' } });
+  });
+
+  it('reads age and gender (Telugu or English) and flags bad values', () => {
+    const headersAg = ['Voter ID', 'Name', 'Ward', 'House No', 'Status', 'వయసు', 'లింగము'];
+    const map = autoDetectMapping(headersAg);
+    const [ok] = validateRows(extractRows([['V1', 'Ravi', '1', '5', 'Active', '43', 'పు']], map), ctx());
+    expect(ok.voter).toMatchObject({ age: 43, gender: 'Male' });
+    const [bad] = validateRows(extractRows([['V2', 'Sita', '1', '5', 'Active', '7', 'X']], map), ctx());
+    expect(bad.issues.map((i) => i.field)).toEqual(expect.arrayContaining(['age', 'gender']));
+  });
+
+  it('accepts a row without a booth (ward rolls have none)', () => {
+    const [r] = run([['Active', 'V9', 'Ravi', '1', '', '4-5', '', '', '']]);
+    expect(r.category).toBe('valid');
+    expect(r.voter).toMatchObject({ wardId: 'W1', boothId: '', houseNumber: '4-5' });
+  });
+
   it('flags a missing status instead of defaulting it', () => {
     const [r] = run([['', 'V1', 'Ravi', '1', '11', '1', '', '', '']]);
     expect(r.category).toBe('invalid');
@@ -51,12 +77,25 @@ describe('row validation', () => {
     expect(r.issues.map((i) => i.field)).toContain('status');
   });
 
-  it('flags invalid status, mobile, ward and booth', () => {
+  it('flags invalid status and ward', () => {
     const [bad] = run([['Moved', 'V1', 'Ravi', '9', '11', '1', '12345', '', '']]);
     const fields = bad.issues.map((i) => i.field);
-    expect(fields).toEqual(expect.arrayContaining(['status', 'mobile', 'wardNumber']));
-    const [wrongBooth] = run([['Active', 'V2', 'Ravi', '1', '21', '1', '', '', '']]);
-    expect(wrongBooth.issues.map((i) => i.field)).toContain('boothNumber');
+    expect(fields).toEqual(expect.arrayContaining(['status', 'wardNumber']));
+  });
+
+  it('adds the voter without a booth when the Booth Number is not a booth of the ward', () => {
+    const [otherWard, notANumber, ok] = run([
+      ['Active', 'V2', 'Ravi', '1', '21', '1', '', '', ''],
+      ['Active', 'V3', 'Sita', '1', 'BLO1', '2', '', '', ''],
+      ['Active', 'V4', 'Anu', '1', '11', '3', '', '', ''],
+    ]);
+    for (const r of [otherWard, notANumber]) {
+      expect(r.category).toBe('valid');
+      expect(r.boothNotFound).toBe(true);
+      expect(r.voter).toMatchObject({ wardId: 'W1', boothId: '' });
+    }
+    expect(ok.boothNotFound).toBe(false);
+    expect(ok.voter?.boothId).toBe('B1');
   });
 
   it('separates duplicates within the file and against existing records', () => {

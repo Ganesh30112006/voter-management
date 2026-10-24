@@ -8,7 +8,7 @@ interface Props {
   onViewReceipt: (transactionId: string) => void;
 }
 
-/** A "Pay" button, or a green tick once the voter has received a payment. */
+/** A "Pay" button, a green tick once the voter has received a payment, or "Not eligible" for voters who are not Active. */
 export function PaymentAction({ voter, onPay, onViewReceipt }: Props) {
   if (voter.paymentStatus === 'Received' && voter.latestPayment) {
     const tx = voter.latestPayment;
@@ -22,6 +22,14 @@ export function PaymentAction({ voter, onPay, onViewReceipt }: Props) {
       >
         <CheckCircle2 size={16} aria-hidden="true" /> Received
       </button>
+    );
+  }
+  // Only Active voters are paid (Shifted and Not Active, e.g. deceased, are not).
+  if (voter.status !== 'Active') {
+    return (
+      <span className="small muted" title={`Only Active voters can be paid. This voter is ${voter.status}.`}>
+        Not eligible
+      </span>
     );
   }
   if (!voter.canRecordPayment) return null;

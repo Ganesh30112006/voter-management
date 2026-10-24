@@ -6,10 +6,12 @@ import { SearchInput } from '../../components/common/SearchInput';
 import { EmptyState, ErrorState, SkeletonLines } from '../../components/common/States';
 import { useQuery } from '../../hooks/useQuery';
 import { useToast } from '../../hooks/useToast';
+import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useWards } from '../../hooks/useWards';
 import { wardService } from '../../services/wardService';
 import type { Booth, Ward, WardSummary } from '../../types';
 import { formatNumber } from '../../utils/format';
+import { isSuperAdmin } from '../../utils/permissions';
 import { AssignAdminsModal, BoothFormModal, WardFormModal } from './WardModals';
 import './WardsPage.css';
 
@@ -21,6 +23,8 @@ type Dialog =
 
 export function WardsPage() {
   const toast = useToast();
+  // Corporators manage booths and their BLOs in their own wards; wards and their Corporators are the Super Admin's.
+  const superAdmin = isSuperAdmin(useCurrentAdmin());
   const { reload: reloadReference } = useWards();
   const [refreshKey, setRefreshKey] = useState(0);
   const { data, loading, error, reload } = useQuery(() => wardService.summaries(), String(refreshKey));
@@ -56,15 +60,21 @@ export function WardsPage() {
     <>
       <PageHeader
         title="Wards & Booths"
-        description="Ward → Booth → Voters. Expand a ward to see its booths and assign administrators."
+        description={
+          superAdmin
+            ? 'Ward → Booth → Voters. Expand a ward to see its booths and assign its Corporator and BLOs.'
+            : 'Your wards. Add booths and put your BLOs on them.'
+        }
         actions={
           <>
             <button type="button" className="btn btn-secondary" onClick={() => setDialog({ kind: 'booth' })} disabled={!data?.length}>
               <Plus size={16} aria-hidden="true" /> Add booth
             </button>
-            <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: 'ward' })}>
-              <Plus size={16} aria-hidden="true" /> Add ward
-            </button>
+            {superAdmin && (
+              <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: 'ward' })}>
+                <Plus size={16} aria-hidden="true" /> Add ward
+              </button>
+            )}
           </>
         }
       />
@@ -103,18 +113,22 @@ export function WardsPage() {
                   <div className="ward-stats small">
                     <span>{formatNumber(w.booths.length)} booths</span>
                     <span>{formatNumber(w.voterCount)} voters</span>
-                    <span>{w.adminIds.length ? w.adminIds.join(', ') : 'No admin'}</span>
+                    <span>{w.adminIds.length ? w.adminIds.join(', ') : 'No Corporator'}</span>
                   </div>
                   <div className="row ward-actions">
                     <Link to={`/voters?ward=${encodeURIComponent(w.id)}`} className="btn btn-ghost btn-sm">
                       <Users size={15} aria-hidden="true" /> Voters
                     </Link>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'assignWard', ward: w })}>
-                      <UserCog size={15} aria-hidden="true" /> Admins
-                    </button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'ward', ward: w })} aria-label={`Edit ward ${w.number}`}>
-                      <Pencil size={15} aria-hidden="true" />
-                    </button>
+                    {superAdmin && (
+                      <>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'assignWard', ward: w })}>
+                          <UserCog size={15} aria-hidden="true" /> Corporator
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'ward', ward: w })} aria-label={`Edit ward ${w.number}`}>
+                          <Pencil size={15} aria-hidden="true" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -179,8 +193,8 @@ export function WardsPage() {
       {dialog?.kind === 'assignWard' && (
         <AssignAdminsModal
           target={{ kind: 'ward', id: dialog.ward.id }}
-          title={`Corporators for Ward ${dialog.ward.number}`}
-          description="Selected Corporators see and pay the voters of this ward. Removing a Corporator also removes this ward from its BLOs."
+          title={`Corporator for Ward ${dialog.ward.number}`}
+          description="A ward has one Corporator, who has full control over its voters, booths and BLOs. Changing the Corporator moves the ward: the previous Corporator and their BLOs lose it."
           assigned={dialog.ward.adminIds}
           onClose={() => setDialog(null)}
           onSaved={() => afterChange(`Ward ${dialog.ward.number} assignment saved.`)}

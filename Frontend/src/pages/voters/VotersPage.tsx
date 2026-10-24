@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { VoterWorkspace } from '../../components/voters/VoterWorkspace';
 import { useCurrentAdmin } from '../../hooks/useAuth';
-import { isSuperAdmin } from '../../utils/permissions';
+import { canManageWardData, isSuperAdmin } from '../../utils/permissions';
 
 export function VotersPage() {
   const admin = useCurrentAdmin();
@@ -18,12 +18,12 @@ export function VotersPage() {
             ? 'Search, add and edit voters. Click Pay to record a payment.'
             : admin.role === 'BLO'
               ? 'Voters in your assigned booths. Click Pay to record a payment.'
-              : 'Voters in your wards. Click Pay to record a payment.'
+              : 'Voters in your wards. Search, add and edit them; click Pay to record a payment.'
         }
       />
       <VoterWorkspace
         key={params.toString()}
-        manage={superAdmin}
+        manage={canManageWardData(admin)}
         initialWardId={params.get('ward') ?? ''}
         initialBoothId={params.get('booth') ?? ''}
       />

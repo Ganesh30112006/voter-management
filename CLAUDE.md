@@ -13,7 +13,12 @@ Session memory for this project. Read it fully before starting work.
 > - **Payments are cash in hand: no transaction ID is shown anywhere** (screens, search, exports, audit "Affected Record"). The server still keeps an internal `TXN-000001` reference for linking, cancel/reverse and idempotency.
 > - **Corporators have a Location** (free text, optional, max 200 chars) that the Super Admin enters when creating/editing them. BLOs have none (`location: ''`).
 > - **A Super Admin can create more Super Admins** (user, 2026-10-24): IDs `SA-2`, `SA-3`, … (counter `super_admin`, migration 002); name + mobile + password only (no wards/location); full rights. A Super Admin manages every account **except its own** (that is My Profile), so one active Super Admin always remains.
-> - **Import accepts Excel, CSV and PDF** (user, 2026-10-24): a typed PDF table with headings, or the Election Commission electoral-roll layout (EPIC, name, house no.; Ward/Booth/Status chosen for the whole file, booth prefilled from "Part No."). PDFs are read in the browser (pdf.js); scanned PDFs are rejected (no OCR).
+> - **Import accepts Excel, CSV and PDF** (user, 2026-10-24): a typed PDF table with headings, or an electoral roll (English EC layout or the **Telugu AP ward roll**: ఓటరు పేరు, ఇంటి సంఖ్య = door number, వయస్సు/వయసు, లింగము పు/స్త్రీ, EPIC "ఓటరు ఐడి. కార్డు నెం." at the bottom of each box). Ward + Status chosen for the whole roll, **booth optional**; the assembly reference "94 - 195 - 210" is ignored. Browser print margins (URL, date, "64/101") and rotated watermarks are skipped. PDFs up to 2 GB are read in 1 MB pieces page by page; scanned pages are listed as skipped (no OCR). Excel ≤ 100 MB, CSV ≤ 200 MB.
+> - **Changes from 2026-10-24 (later):** voters have **no mobile number** (receiver mobile stays on payments); **booth is optional** for voters; voters have optional **Age** and **Gender**; an import Booth Number that is not a booth of the ward (e.g. "BLO1") only warns and the voter is added without a booth; **Voter ID is the default sort**.
+> - **Status:** only **Active voters can be paid** (Shifted / Not Active are refused; deceased = Not Active). A separate **"Update status" import** reads every EPIC in a deaths/shifted list (PDF/Excel/CSV) and sets the chosen status for matching voters.
+> - **Corporators have full control inside their own wards** (user, 2026-10-24): add/edit/import voters, status lists, booths and their BLOs, cancel payments. Wards and a ward's Corporator stay Super Admin only. **A ward has one Corporator**: giving a taken ward asks the Super Admin to **Move** or **Cancel**.
+> - **Existing Voter ID** on import or add: the user chooses **Keep the existing voter** or **Replace its details** (payments stay with the voter).
+> - **Corporators and BLOs are never shown Super Admins**: no SA accounts in lists, and work an SA did carries no recorder (blank); settings changes notify only "Payment details · Successfully updated".
 
 ---
 
@@ -35,9 +40,9 @@ A system for an organization that distributes donations to voters.
 6. If a voter has received a donation, show **only a tick** (click → transaction details). Otherwise show a **Donate** button. **One successful donation per voter**, no repeats. **The receiver is not limited**: one person (e.g. the head of a household) may receive for several voters, so never add a uniqueness check on receiver name/mobile. A Super Admin can cancel/reverse a mistaken one, and the voter goes back to Not Received.
 7. **Login = mobile number OR full name, + password** (set by the Super Admin, or by a BLO's Corporator). Names may repeat; the password tells same-named accounts apart, so **a password that another account with the same name (case/space-insensitive) already uses is rejected** on create, reset and change. If a rename ever makes name+password ambiguous, name login asks for the mobile number. No forgot-password feature. API body: `POST /auth/login {identifier, password, remember}`.
 8. **Super Admin can change any admin's password.** BL Admins can also change their own (My Profile).
-9. **BL Admins can donate to any voter** (not only their wards).
+9. ~~BL Admins can donate to any voter~~ (superseded: area-scoped, see the role block).
 10. **Permissions are the same for every BL Admin**; there are no per-admin permission checkboxes. Only the Super Admin manages admins, wards/booths, voters (add/edit), imports, settings and audit logs.
-11. Voter status (Active / Not Active / Shifted) is independent of donation status, and is never defaulted when missing (forms and imports).
+11. Voter status (Active / Not Active / Shifted) is never defaulted when missing (forms and imports). Only Active voters can be paid.
 12. Stack: React + TypeScript + Vite, plain CSS files (**no Tailwind**), React Router, Axios, React Hook Form + Zod, Recharts, Lucide icons, SheetJS (xlsx).
 13. Commit/push only when asked. End commit messages with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
@@ -45,7 +50,7 @@ A system for an organization that distributes donations to voters.
 
 **No mock / demo mode** (user, 2026-10-24): the frontend always talks to the real API; the mock server, demo seed and Vercel demo were removed. The login page shows only the login form (no product name, no test credentials; tab title "Login").
 Run: start the backend (section 4), then `cd Frontend && npm install && npm run dev` → http://localhost:5173 (`.env.development` points at http://localhost:4000/api).
-Checks: `npm run typecheck`, `npm test` (24 Vitest tests), `npm run build`. All pass.
+Checks: `npm run typecheck`, `npm test` (34 Vitest tests), `npm run build`. All pass.
 
 Screens: Login (mobile or name) · Dashboard (role-specific) · Accounts (SA: Corporators / BLOs / Super Admins tabs; Corporator: "My BLOs") · Wards & Booths (Corporators on wards, BLOs on booths) · Voters (SA: manage; others: "My Voters" in their area) · Import (Excel/CSV/PDF; heading row found below title rows; real spreadsheet row numbers) · Payment Management · Payment History (no payment ID shown; SA cancel/reverse) · Reports · Audit Logs (SA) · Settings (SA) · My Profile.
 
@@ -58,7 +63,7 @@ Testing tip: in Playwright, logging in through the form makes Chrome's "Save pas
 ## 4. Backend (complete): `Backend/`, see `Backend/README.md`
 
 Node + TypeScript + Express 5 + PostgreSQL (`pg`, plain SQL migrations in `Backend/migrations/`). No Docker: `npm run db:local` runs a real PostgreSQL from the `embedded-postgres` npm package (data in `Backend/.pgdata`); tests start their own. Local API port is **4000** in `Backend/.env`: on this PC, 8080 is used by Jenkins and 8090 by a Wondershare app.
-Run: `npm run db:local` (terminal 1) → `create-super-admin` once (see README) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (43 API tests against real Postgres; sample data in `test/fixtures.ts`), `npm run build`. All pass, and the full browser flow was verified against the real API.
+Run: `npm run db:local` (terminal 1) → `create-super-admin` once (see README) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (50 API tests against real Postgres; sample data in `test/fixtures.ts`), `npm run build`. All pass, and the full browser flow was verified against the real API.
 
 Conventions: JSON; `Authorization: Bearer <token>` (only a SHA-256 of tokens is stored); errors `{message, code?, fieldErrors?}` with 400/401/403/404/409; lists `?page&pageSize&sortBy&sortDir` → `{items,total,page,pageSize}`; sort keys are whitelisted, everything else is parameterised.
 

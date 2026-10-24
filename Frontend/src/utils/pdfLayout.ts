@@ -2,7 +2,6 @@ import { autoDetectMapping, IMPORT_FIELDS } from './importParser';
 
 /** One run of text on a PDF page. x/y are in points from the page's top-left; y is the text baseline. */
 export interface PdfTextItem {
-  page: number;
   str: string;
   x: number;
   y: number;
@@ -15,20 +14,23 @@ export interface PdfTextItem {
 export interface RollRecord {
   voterId: string;
   fullName: string;
+  /** House / door number (ఇంటి సంఖ్య). */
   houseNumber: string;
+  /** Age as printed (వయస్సు), '' when missing. */
+  age: string;
+  /** Gender as printed (లింగము: పు / స్త్రీ, or Male / Female), '' when missing. */
+  gender: string;
 }
 
 export interface ElectoralRoll {
   records: RollRecord[];
-  /** "Part No." printed on the roll, usually the polling booth number. */
-  partNumber: number | null;
   /** Voter boxes whose EPIC number could not be read (they are left out). */
   unreadBoxes: number;
 }
 
 export type PdfLayout =
-  | { kind: 'table'; rows: string[][] }
-  | { kind: 'roll'; roll: ElectoralRoll }
+  | { kind: 'table'; rows: string[][]; textlessPages: number[] }
+  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[] }
   | { kind: 'no-text' }
   | { kind: 'unknown' };
 
@@ -83,16 +85,6 @@ function cells(items: PdfTextItem[], gapFactor: number): Cell[] {
 
 const lineText = (items: PdfTextItem[]) => cells(items, 1.5).map((c) => c.text).join(' ');
 
-function pages(items: PdfTextItem[]): PdfTextItem[][] {
-  const byPage = new Map<number, PdfTextItem[]>();
-  for (const i of items) {
-    const list = byPage.get(i.page) ?? [];
-    list.push(i);
-    byPage.set(i.page, list);
-  }
-  return [...byPage.entries()].sort((a, b) => a[0] - b[0]).map(([, list]) => list);
-}
-
 /** A heading row names at least three import fields, including Voter ID or Name. */
 function isHeaderRow(texts: string[]): boolean {
   const m = autoDetectMapping(texts);
@@ -101,32 +93,32 @@ function isHeaderRow(texts: string[]): boolean {
 }
 
 /**
- * Reads a table: the first line whose cells are column headings sets the columns, and every later line
+ * Table layout: the first line whose cells are column headings sets the columns, and every later line
  * (on any page) becomes a row, with each text placed in the column its left edge falls under.
  */
-export function readTable(items: PdfTextItem[]): string[][] | null {
-  let columns: Cell[] | null = null;
-  let headerKey = '';
-  const rows: string[][] = [];
-  let prev: { y: number; size: number; page: number } | null = null;
+class TableReader {
+  private columns: Cell[] | null = null;
+  private headerKey = '';
+  private prev: { y: number; size: number; page: number } | null = null;
+  readonly rows: string[][] = [];
 
-  pages(items).forEach((pageItems, pageIndex) => {
-    for (const line of groupLines(pageItems)) {
+  addPage(page: number, lines: Line[]): void {
+    for (const line of lines) {
       const lineCells = cells(line.items, 0.6);
-      if (!columns) {
+      if (!this.columns) {
         if (isHeaderRow(lineCells.map((c) => c.text))) {
-          columns = lineCells;
-          headerKey = lineCells.map((c) => c.text.toLowerCase()).join('|');
-          prev = null;
+          this.columns = lineCells;
+          this.headerKey = lineCells.map((c) => c.text.toLowerCase()).join('|');
+          this.prev = null;
         }
         continue;
       }
       // Headings repeated at the top of later pages.
-      if (lineCells.map((c) => c.text.toLowerCase()).join('|') === headerKey) {
-        prev = null;
+      if (lineCells.map((c) => c.text.toLowerCase()).join('|') === this.headerKey) {
+        this.prev = null;
         continue;
       }
-      const cols: Cell[] = columns;
+      const cols = this.columns;
       // Column i starts halfway between heading i-1's end and heading i's start.
       const starts = cols.map((c, i) => (i === 0 ? -Infinity : (cols[i - 1].x1 + c.x0) / 2));
       const values = cols.map(() => [] as PdfTextItem[]);
@@ -137,41 +129,71 @@ export function readTable(items: PdfTextItem[]): string[][] | null {
       }
       const row = values.map(lineText);
       const filled = row.filter((v) => v !== '').length;
-      const last = rows[rows.length - 1];
+      const last = this.rows[this.rows.length - 1];
       // A wrapped cell continues on a tight line underneath, with most columns empty.
       const continuation =
-        last && prev && prev.page === pageIndex && filled < cols.length / 2 && line.y - prev.y <= line.size * 1.35;
+        last && this.prev && this.prev.page === page && filled < cols.length / 2 && line.y - this.prev.y <= line.size * 1.35;
       if (continuation) {
         row.forEach((v, i) => {
           if (v) last[i] = last[i] ? `${last[i]} ${v}` : v;
         });
       } else if (filled >= 2) {
         // Single texts (page numbers, footers) are not rows.
-        rows.push(row);
+        this.rows.push(row);
       }
-      prev = { y: line.y, size: line.size, page: pageIndex };
+      this.prev = { y: line.y, size: line.size, page };
     }
-  });
+  }
 
-  const header = columns as Cell[] | null;
-  return header ? [header.map((c) => c.text), ...rows] : null;
+  result(): string[][] | null {
+    return this.columns && this.rows.length ? [this.columns.map((c) => c.text), ...this.rows] : null;
+  }
 }
 
 const EPIC = /\b([A-Z]{3}\d{7}|[A-Z]{2}\/\d{2}\/\d{2,3}\/\d{5,7})\b/;
-const RELATION = /(father|husband|mother|wife|guardian|relative|other)'?s?\s*$/i;
-const NAME_LABEL = /^(?:elector'?s\s+)?name\s*[:\-]?\s*(.*)$/i;
-const HOUSE_LABEL = /\bhouse\s*(?:number|no\.?)\s*[:\-]?\s*(.*)$/i;
 
-/** Left edges of the voter-box columns on a page, from where the "Name" labels start. */
+/** EPIC (voter ID card) numbers in a text, e.g. NDX3549268 or AP/12/123/456789. */
+export function voterIdsInText(text: string): string[] {
+  return [...text.matchAll(new RegExp(EPIC.source, 'g'))].map((m) => m[1]);
+}
+
+/** A page's text, line by line (pieces of one line joined as they appear). */
+export function pageText(items: PdfTextItem[]): string {
+  return groupLines(items)
+    .filter((l) => !isPrintMargin(l))
+    .map((l) => lineText(l.items))
+    .join('\n');
+}
+
+/** Text with spaces and zero-width joiners removed, for matching labels (Telugu labels often split oddly). */
+const compact = (s: string) => s.normalize('NFC').replace(/[\s\u200b-\u200d]/g, '').toLowerCase();
+
+/** The voter's own name label: English "Name" / "Elector's Name" (not Father's Name etc.) or Telugu "ఓటరు పేరు". */
+function isNameLabel(text: string): boolean {
+  const c = compact(text);
+  return c.startsWith('ఓటరుపేరు') || /^(?:elector'?s)?name(?![a-z])/.test(c);
+}
+/** House / door number label: English "House Number" / "House No." or Telugu "ఇంటి సంఖ్య" (also extracted as "ఇంటి సంఖ"). */
+const isHouseLabel = (text: string) => /^house(number|no)/.test(compact(text)) || compact(text).startsWith('ఇంటిసంఖ');
+
+const AGE = /(?:\bage|వయస్సు|వయసు)\s*:?\s*(\d{1,3})/i;
+const GENDER = /(?:\bgender|\bsex|లింగము|లింగం)\s*:?\s*([^\s:]+)/i;
+
+/** The value after a label: the text after the first ":" (or after the label words when there is none). */
+function labelValue(text: string, label: RegExp): string {
+  const i = text.indexOf(':');
+  return clean(i >= 0 ? text.slice(i + 1) : text.replace(label, ''));
+}
+
+const median = (xs: number[]) => {
+  const s = [...xs].sort((a, b) => a - b);
+  return s.length ? s[Math.floor(s.length / 2)] : 0;
+};
+
+/** Left edges of the voter-box columns on a page, from where the voter-name labels start. */
 function boxColumns(lines: Line[]): number[] {
   const xs: number[] = [];
-  for (const line of lines) {
-    line.items.forEach((item, i) => {
-      const before = line.items[i - 1];
-      const joinedToBefore = before && item.x - (before.x + before.width) < item.size;
-      if (/^(?:elector'?s\s+)?name\b/i.test(clean(item.str)) && !(joinedToBefore && RELATION.test(clean(before.str)))) xs.push(item.x);
-    });
-  }
+  for (const line of lines) for (const cell of cells(line.items, 1)) if (isNameLabel(cell.text)) xs.push(cell.x0);
   xs.sort((a, b) => a - b);
   const columns: number[] = [];
   for (const x of xs) if (!columns.length || x - columns[columns.length - 1] > 50) columns.push(x);
@@ -179,67 +201,154 @@ function boxColumns(lines: Line[]): number[] {
 }
 
 /**
- * Reads the Election Commission roll layout: pages of voter boxes (usually three across), each with the
- * serial and EPIC number on top, then "Name", the relative's name, "House Number", age and gender.
+ * Splits one column of a roll page into voter boxes. A box starts on the line just above its voter-name
+ * line (the serial line in both the English and the Telugu layouts) and runs until the next box starts.
  */
-export function readElectoralRoll(items: PdfTextItem[]): ElectoralRoll {
-  const records: RollRecord[] = [];
-  let partNumber: number | null = null;
-  let nameLabels = 0;
-
-  for (const pageItems of pages(items)) {
-    const onPage: { record: RollRecord; column: number; y: number; size: number }[] = [];
-    const lines = groupLines(pageItems);
-    if (partNumber === null) {
-      const m = lines.map((l) => lineText(l.items)).join('\n').match(/part\s*(?:no\.?|number)\s*[:\-.]?\s*(\d+)/i);
-      if (m) partNumber = Number(m[1]);
+function columnBoxes(lines: Line[]): Line[][] {
+  const anchors = lines.map((l, i) => (cells(l.items, 1).some((c) => isNameLabel(c.text)) ? i : -1)).filter((i) => i >= 0);
+  if (!anchors.length) return [];
+  const spacing = median(lines.slice(1).map((l, i) => l.y - lines[i].y).filter((d) => d > 0)) || 12;
+  const starts = anchors.map((a) => (a > 0 && !anchors.includes(a - 1) && lines[a].y - lines[a - 1].y <= spacing * 1.6 ? a - 1 : a));
+  return starts.map((start, k) => {
+    let end = k + 1 < starts.length ? starts[k + 1] : lines.length;
+    // The last box on a column ends at a wide gap (a footer may follow).
+    if (k + 1 === starts.length) {
+      for (let j = anchors[k] + 1; j < end; j++) {
+        if (lines[j].y - lines[j - 1].y > spacing * 2.5) {
+          end = j;
+          break;
+        }
+      }
     }
+    return lines.slice(start, end);
+  });
+}
+
+/**
+ * Election Commission roll layouts (English and Telugu): pages of voter boxes, usually three across. Each box
+ * holds a serial line, the voter's name, the relative's name, age/gender, house / door number and the EPIC
+ * number (at the top in the English layout, at the bottom in the Telugu ward rolls). Fields are found by their
+ * labels, so their order inside the box does not matter. Other numbers in the box (serials, the assembly
+ * reference such as "94 - 195 - 210") are not used.
+ */
+class RollReader {
+  readonly records: RollRecord[] = [];
+  private boxes = 0;
+
+  addPage(items: PdfTextItem[], lines: Line[]): void {
     const columns = boxColumns(lines);
-    if (!columns.length) continue; // cover and summary pages
+    if (!columns.length) return; // cover and summary pages
+    const onPage: { record: RollRecord; column: number; y: number; size: number }[] = [];
     const tol = 10;
     for (let c = 0; c < columns.length; c++) {
       const left = c === 0 ? -Infinity : columns[c] - tol;
       const right = c + 1 < columns.length ? columns[c + 1] - tol : Infinity;
-      const columnLines = groupLines(pageItems.filter((i) => i.x >= left && i.x < right));
-      let current: RollRecord | null = null;
-      for (const line of columnLines) {
-        let text = lineText(line.items);
-        const epic = text.match(EPIC);
-        if (epic) {
-          current = { voterId: epic[1], fullName: '', houseNumber: '' };
-          onPage.push({ record: current, column: c, y: line.y, size: line.size });
-          text = clean(text.replace(epic[0], ''));
-        }
-        const name = text.match(NAME_LABEL);
-        if (name) {
-          nameLabels++;
-          if (current && !current.fullName) current.fullName = clean(name[1]);
-          continue;
-        }
-        const house = text.match(HOUSE_LABEL);
-        if (house && current && !current.houseNumber) current.houseNumber = clean(house[1].split(/\s+(?:age|gender|photo)\b/i)[0]);
+      for (const box of columnBoxes(groupLines(items.filter((i) => i.x >= left && i.x < right)))) {
+        this.boxes++;
+        const texts = box.map((l) => lineText(l.items));
+        const epic = texts.join('\n').match(EPIC);
+        if (!epic) continue;
+        const nameLine = texts.find(isNameLabel);
+        const houseLine = texts.find(isHouseLabel);
+        const boxText = texts.join('\n').normalize('NFC').replace(/[\u200b-\u200d]/g, '');
+        onPage.push({
+          record: {
+            voterId: epic[1],
+            fullName: nameLine ? labelValue(nameLine, /^\s*(elector'?s\s+)?name/i) : '',
+            houseNumber: houseLine ? labelValue(houseLine, /^\s*house\s*(number|no\.?)/i).split(/\s+(?:age|gender|photo)\b/i)[0] : '',
+            age: boxText.match(AGE)?.[1] ?? '',
+            gender: boxText.match(GENDER)?.[1] ?? '',
+          },
+          column: c,
+          y: box[0].y,
+          size: box[0].size,
+        });
       }
     }
     // Boxes in one row share their top line; read each row left to right, as the serial numbers run.
     onPage.sort((a, b) => (Math.abs(a.y - b.y) > Math.max(a.size, b.size) ? a.y - b.y : a.column - b.column));
-    records.push(...onPage.map((r) => r.record));
+    for (const r of onPage) this.records.push(r.record);
   }
-  return { records, partNumber, unreadBoxes: Math.max(0, nameLabels - records.length) };
+
+  result(): ElectoralRoll | null {
+    if (!this.records.length) return null;
+    return { records: this.records, unreadBoxes: this.boxes - this.records.length };
+  }
 }
 
-export function readPdfLayout(items: PdfTextItem[]): PdfLayout {
-  if (!items.some((i) => clean(i.str) !== '')) return { kind: 'no-text' };
-  const table = readTable(items);
-  if (table && table.length > 1) return { kind: 'table', rows: table };
-  const roll = readElectoralRoll(items);
-  if (roll.records.length) return { kind: 'roll', roll };
-  return { kind: 'unknown' };
+/** A web address such as "https://sec-ems.ap.gov.in/apsec/..." or "sec-ems.ap.gov.in/apsec/...". */
+const WEB_ADDRESS = /https?:\/\/|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/\S/i;
+/** A line that is only a print date/time and/or a "64/101" page counter. */
+const PRINT_STAMP = /^(?:\d{1,2}\/\d{1,2}\/\d{2,4},?\s*\d{1,2}:\d{2}(?:\s*[AP]M)?|\d{1,4}\s*\/\s*\d{1,4}|\s)+$/i;
+
+/**
+ * Browsers print the page address, date/time and "page x/y" in the margins of a saved PDF. Those lines are
+ * not voter data, so they are left out before reading.
+ */
+function isPrintMargin(line: Line): boolean {
+  const text = lineText(line.items);
+  return WEB_ADDRESS.test(text) || PRINT_STAMP.test(text);
 }
 
-/** Sheet rows for a roll, with the ward, booth and status chosen for the whole file. */
+/**
+ * Reads a PDF one page at a time and keeps only what it finds (table rows or roll voters), so very large
+ * files do not need all their text in memory. Both layouts are tried on every page.
+ */
+export class PdfLayoutReader {
+  private readonly table = new TableReader();
+  private readonly roll = new RollReader();
+  private readonly textless: number[] = [];
+  private pages = 0;
+
+  addPage(page: number, items: PdfTextItem[]): void {
+    this.pages++;
+    const all = groupLines(items);
+    if (!all.length) {
+      this.textless.push(page);
+      return;
+    }
+    const lines = all.filter((l) => !isPrintMargin(l));
+    const kept = new Set(lines.flatMap((l) => l.items));
+    this.table.addPage(page, lines);
+    this.roll.addPage(
+      items.filter((i) => kept.has(i)),
+      lines,
+    );
+  }
+
+  finish(): PdfLayout {
+    if (this.textless.length === this.pages) return { kind: 'no-text' };
+    const rows = this.table.result();
+    if (rows) return { kind: 'table', rows, textlessPages: this.textless };
+    const roll = this.roll.result();
+    if (roll) return { kind: 'roll', roll, textlessPages: this.textless };
+    return { kind: 'unknown' };
+  }
+}
+
+/** Reads already-extracted pages (index 0 = page 1). */
+export function readPdfLayout(pages: PdfTextItem[][]): PdfLayout {
+  const reader = new PdfLayoutReader();
+  pages.forEach((items, i) => reader.addPage(i + 1, items));
+  return reader.finish();
+}
+
+/** Sheet rows for a roll, with the ward, (optional) booth and status chosen for the whole file. */
 export function rollRows(roll: ElectoralRoll, wardNumber: string, boothNumber: string, status: string): string[][] {
   return [
-    ['Voter ID', 'Full Name', 'House Number', 'Ward Number', 'Booth Number', 'Status'],
-    ...roll.records.map((r) => [r.voterId, r.fullName, r.houseNumber, wardNumber, boothNumber, status]),
+    ['Voter ID', 'Full Name', 'House / Door Number', 'Ward Number', 'Booth Number', 'Status', 'Age', 'Gender'],
+    ...roll.records.map((r) => [r.voterId, r.fullName, r.houseNumber, wardNumber, boothNumber, status, r.age, r.gender]),
   ];
+}
+
+/** Compact page list for messages: [3, 4, 5, 9] -> "3–5, 9". */
+export function pageRanges(pages: number[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < pages.length; i++) {
+    let j = i;
+    while (j + 1 < pages.length && pages[j + 1] === pages[j] + 1) j++;
+    out.push(i === j ? String(pages[i]) : `${pages[i]}–${pages[j]}`);
+    i = j;
+  }
+  return out.join(', ');
 }

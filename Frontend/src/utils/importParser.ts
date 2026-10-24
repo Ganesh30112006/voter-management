@@ -1,27 +1,34 @@
 import type { Booth, VoterInput, Ward } from '../types';
-import { HOUSEHOLD_ID_PATTERN, isValidIndianMobile, normalizeMobile, normalizeVoterStatus } from './validation';
+import { HOUSEHOLD_ID_PATTERN, normalizeGender, normalizeVoterStatus } from './validation';
 
 export type ImportField =
   | 'voterId'
   | 'fullName'
-  | 'mobile'
   | 'wardNumber'
   | 'boothNumber'
   | 'houseNumber'
   | 'householdId'
   | 'address'
-  | 'status';
+  | 'status'
+  | 'age'
+  | 'gender';
 
 export const IMPORT_FIELDS: { key: ImportField; label: string; required: boolean; synonyms: string[] }[] = [
   { key: 'voterId', label: 'Voter ID', required: true, synonyms: ['voter id', 'voterid', 'epic', 'epic no', 'epic number', 'electoral id', 'voter id no'] },
   { key: 'fullName', label: 'Full Name', required: true, synonyms: ['full name', 'name', 'voter name', 'fullname'] },
-  { key: 'mobile', label: 'Mobile Number', required: false, synonyms: ['mobile number', 'mobile', 'phone', 'phone number', 'contact', 'mobile no'] },
   { key: 'wardNumber', label: 'Ward Number', required: true, synonyms: ['ward number', 'ward', 'ward no', 'ward_no'] },
-  { key: 'boothNumber', label: 'Booth Number', required: true, synonyms: ['booth number', 'booth', 'booth no', 'polling booth', 'part no'] },
-  { key: 'houseNumber', label: 'House Number', required: true, synonyms: ['house number', 'house no', 'house', 'door no', 'door number'] },
+  { key: 'boothNumber', label: 'Booth Number', required: false, synonyms: ['booth number', 'booth', 'booth no', 'polling booth'] },
+  {
+    key: 'houseNumber',
+    label: 'House / Door Number',
+    required: true,
+    synonyms: ['house / door number', 'house number', 'house no', 'house', 'door no', 'door number', 'ఇంటి సంఖ్య', 'ఇంటి సంఖ', 'ఇంటి నంబర్'],
+  },
   { key: 'householdId', label: 'Household ID', required: false, synonyms: ['household id', 'household', 'family id', 'household no'] },
   { key: 'address', label: 'Address', required: false, synonyms: ['address', 'full address', 'street'] },
   { key: 'status', label: 'Status', required: true, synonyms: ['status', 'voter status'] },
+  { key: 'age', label: 'Age', required: false, synonyms: ['age', 'వయస్సు', 'వయసు'] },
+  { key: 'gender', label: 'Gender', required: false, synonyms: ['gender', 'sex', 'లింగము', 'లింగం'] },
 ];
 
 export const TEMPLATE_HEADERS = IMPORT_FIELDS.map((f) => f.label);
@@ -119,6 +126,10 @@ export interface ValidatedRow {
   issues: RowIssue[];
   category: RowCategory;
   voter: VoterInput | null;
+  /** The Voter ID already exists and the user chose to replace that voter's details. */
+  replaces: boolean;
+  /** The Booth Number is not a booth of the row's ward: booth is optional, so the voter is added without one. */
+  boothNotFound: boolean;
 }
 
 export interface ValidationContext {
@@ -127,6 +138,11 @@ export interface ValidationContext {
   existingVoterIds: Set<string>;
   /** householdId -> wardId for households already in the system */
   existingHouseholds: Map<string, string>;
+  /**
+   * What to do with rows whose Voter ID already exists: keep the existing voter (the row is a duplicate and
+   * skipped) or replace that voter's details with the row.
+   */
+  existingVoters?: 'keep' | 'replace';
 }
 
 /** "3", "03", "Ward 3", "W3" -> 3 */
@@ -148,6 +164,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
   return rows.map(({ rowNumber, values }) => {
     const issues: RowIssue[] = [];
     let duplicate = false;
+    let replaces = false;
 
     for (const f of IMPORT_FIELDS) {
       if (f.required && f.key !== 'status' && values[f.key] === '') {
@@ -155,9 +172,10 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
       }
     }
 
-    if (values.mobile !== '' && !isValidIndianMobile(values.mobile)) {
-      issues.push({ field: 'mobile', message: 'Invalid mobile number' });
-    }
+    const age = values.age === '' ? null : /^\d+$/.test(values.age) ? Number(values.age) : NaN;
+    if (age !== null && !(age >= 18 && age <= 120)) issues.push({ field: 'age', message: `"${values.age}" is not a valid age (18 to 120)` });
+    const gender = normalizeGender(values.gender);
+    if (gender === null) issues.push({ field: 'gender', message: `"${values.gender}" is not a valid gender (Male, Female, Other)` });
 
     const status = normalizeVoterStatus(values.status);
     if (values.status === '') issues.push({ field: 'status', message: 'Status is missing' });
@@ -165,6 +183,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
 
     let ward: Ward | undefined;
     let booth: Booth | undefined;
+    let boothNotFound = false;
     if (values.wardNumber !== '') {
       const n = parseUnitNumber(values.wardNumber, 'ward');
       ward = n === null ? undefined : ctx.wards.find((w) => w.number === n);
@@ -173,7 +192,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
     if (values.boothNumber !== '' && ward) {
       const n = parseUnitNumber(values.boothNumber, 'booth');
       booth = n === null ? undefined : ctx.booths.find((b) => b.wardId === ward!.id && b.number === n);
-      if (!booth) issues.push({ field: 'boothNumber', message: `Booth "${values.boothNumber}" does not exist in ward ${ward.number}` });
+      boothNotFound = !booth;
     }
 
     if (values.householdId !== '') {
@@ -195,33 +214,37 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
 
     if (values.voterId !== '') {
       const key = voterIdKey(values.voterId);
-      if (ctx.existingVoterIds.has(key)) {
-        duplicate = true;
-        issues.push({ field: 'voterId', message: 'Voter ID already exists in the system' });
-      } else if (firstSeen.has(key)) {
+      if (firstSeen.has(key)) {
         duplicate = true;
         issues.push({ field: 'voterId', message: `Duplicate of row ${firstSeen.get(key)} in this file` });
       } else {
         firstSeen.set(key, rowNumber);
+        if (ctx.existingVoterIds.has(key) && ctx.existingVoters === 'replace') replaces = true;
+        else if (ctx.existingVoterIds.has(key)) {
+          duplicate = true;
+          issues.push({ field: 'voterId', message: 'Voter ID already exists in the system' });
+        }
       }
     }
 
     const category: RowCategory = duplicate ? 'duplicate' : issues.length ? 'invalid' : 'valid';
     const voter: VoterInput | null =
-      category === 'valid' && ward && booth && status
+      category === 'valid' && ward && status && gender !== null
         ? {
             voterId: values.voterId,
             fullName: values.fullName,
-            mobile: values.mobile === '' ? '' : normalizeMobile(values.mobile),
             wardId: ward.id,
-            boothId: booth.id,
+            // Booth is optional (ward rolls have none).
+            boothId: booth?.id ?? '',
             houseNumber: values.houseNumber,
             householdId: values.householdId,
             address: values.address,
             status,
+            age,
+            gender,
           }
         : null;
 
-    return { rowNumber, values, issues, category, voter };
+    return { rowNumber, values, issues, category, voter, replaces: replaces && category === 'valid', boothNotFound };
   });
 }

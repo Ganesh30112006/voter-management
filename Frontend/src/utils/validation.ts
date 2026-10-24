@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { VOTER_STATUSES, type VoterStatus } from '../types';
+import { GENDERS, VOTER_STATUSES, type Gender, type VoterStatus } from '../types';
 
 /** Strips spaces/dashes and a leading +91, 91 or 0 from an Indian mobile number. */
 export function normalizeMobile(raw: string): string {
@@ -20,6 +20,16 @@ export function normalizeVoterStatus(raw: unknown): VoterStatus | null {
   return VOTER_STATUSES.find((s) => s.toLowerCase() === v) ?? null;
 }
 
+/** Gender as written in files and rolls ("M", "Female", Telugu "పు" / "స్త్రీ"); null when not recognised. */
+export function normalizeGender(raw: unknown): Gender | null {
+  const v = String(raw ?? '').normalize('NFC').trim().toLowerCase();
+  if (v === '') return '';
+  if (['m', 'male', 'పు', 'పురుషుడు', 'పురుష'].includes(v)) return 'Male';
+  if (['f', 'female', 'స్త్రీ', 'స్త్రి', 'మహిళ'].includes(v)) return 'Female';
+  if (['o', 'other', 'others', 'tg', 'transgender', 'ఇతరులు', 'ఇ'].includes(v)) return 'Other';
+  return null;
+}
+
 export const HOUSEHOLD_ID_PATTERN = /^[A-Za-z0-9\-/]+$/;
 
 export const mobileSchema = z
@@ -28,12 +38,6 @@ export const mobileSchema = z
   .min(1, 'Mobile number is required')
   .refine(isValidIndianMobile, 'Enter a valid 10-digit Indian mobile number')
   .transform(normalizeMobile);
-
-export const optionalMobileSchema = z
-  .string()
-  .trim()
-  .refine((v) => v === '' || isValidIndianMobile(v), 'Enter a valid 10-digit Indian mobile number')
-  .transform((v) => (v === '' ? '' : normalizeMobile(v)));
 
 /** Names are compared ignoring case and extra spaces ("ramesh  BABU" = "Ramesh Babu"). */
 export function nameKey(name: string): string {
@@ -75,10 +79,10 @@ export type SetPasswordValues = z.infer<typeof setPasswordSchema>;
 export const voterSchema = z.object({
   voterId: z.string().trim().min(1, 'Voter ID is required').max(30, 'Voter ID is too long'),
   fullName: z.string().trim().min(2, 'Full name is required').max(100),
-  mobile: optionalMobileSchema,
   wardId: z.string().min(1, 'Select a ward'),
-  boothId: z.string().min(1, 'Select a booth'),
-  houseNumber: z.string().trim().min(1, 'House number is required').max(30),
+  // Optional: ward rolls have no booth.
+  boothId: z.string(),
+  houseNumber: z.string().trim().min(1, 'House / door number is required').max(30),
   householdId: z
     .string()
     .trim()
@@ -87,6 +91,12 @@ export const voterSchema = z.object({
   address: z.string().trim().max(250),
   // No default: the admin must choose a status explicitly.
   status: z.enum(VOTER_STATUSES, { errorMap: () => ({ message: 'Select a voter status' }) }),
+  age: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 18 && Number(v) <= 120), 'Age must be a whole number from 18 to 120')
+    .transform((v) => (v === '' ? null : Number(v))),
+  gender: z.enum(['', ...GENDERS]),
 });
 /** Status starts empty: the admin must choose it (no default is ever assigned). */
 export type VoterFormValues = Omit<z.input<typeof voterSchema>, "status"> & { status: VoterStatus | "" };

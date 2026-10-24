@@ -29,9 +29,9 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <DashboardPage /> },
           { path: 'administrators', element: <RequireAccess roles={MANAGERS}><AdministratorsPage /></RequireAccess> },
-          { path: 'wards', element: <RequireAccess roles={SA}><WardsPage /></RequireAccess> },
+          { path: 'wards', element: <RequireAccess roles={MANAGERS}><WardsPage /></RequireAccess> },
           { path: 'voters', element: <VotersPage /> },
-          { path: 'import', element: <RequireAccess roles={SA}><ImportPage /></RequireAccess> },
+          { path: 'import', element: <RequireAccess roles={MANAGERS}><ImportPage /></RequireAccess> },
           { path: 'payments', element: <PaymentManagementPage /> },
           { path: 'payments/history', element: <PaymentHistoryPage /> },
           { path: 'reports', element: <ReportsPage /> },

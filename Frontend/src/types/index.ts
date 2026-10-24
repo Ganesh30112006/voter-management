@@ -31,6 +31,8 @@ export interface AdminInput {
   location?: string;
   wardIds: string[];
   boothIds: string[];
+  /** Corporators: take wards that another Corporator already has (after the user chose "Move"). */
+  moveWards?: boolean;
 }
 
 export interface AdminQuery {
@@ -76,19 +78,28 @@ export interface WardSummary extends Ward {
 export const VOTER_STATUSES = ['Active', 'Not Active', 'Shifted'] as const;
 export type VoterStatus = (typeof VOTER_STATUSES)[number];
 
+export const GENDERS = ['Male', 'Female', 'Other'] as const;
+/** '' when the roll does not say. */
+export type Gender = (typeof GENDERS)[number] | '';
+
 export type PaymentStatus = 'Received' | 'Not Received';
 
 export interface Voter {
   recordId: string;
   voterId: string;
   fullName: string;
-  mobile: string;
   wardId: string;
+  /** Optional: '' when the voter has no booth (ward rolls have none). */
   boothId: string;
+  /** House / door number (ఇంటి సంఖ్య). */
   houseNumber: string;
   householdId: string;
   address: string;
   status: VoterStatus;
+  /** As printed on the roll (వయస్సు); null when unknown. */
+  age: number | null;
+  /** As printed on the roll (లింగము); '' when unknown. */
+  gender: Gender;
   createdAt: string;
   updatedAt: string;
 }
@@ -96,13 +107,15 @@ export interface Voter {
 export interface VoterInput {
   voterId: string;
   fullName: string;
-  mobile: string;
   wardId: string;
+  /** '' for no booth. */
   boothId: string;
   houseNumber: string;
   householdId: string;
   address: string;
   status: VoterStatus;
+  age: number | null;
+  gender: Gender;
 }
 
 export interface VoterListItem extends Voter {
@@ -126,6 +139,8 @@ export interface VoterQuery {
 
 export interface DuplicateCheckResult {
   voterIdExists: boolean;
+  /** The voter that already has this Voter ID; `canReplace` when it is in the caller's wards. */
+  existing: { recordId: string; fullName: string; wardId: string; canReplace: boolean } | null;
   similar: Pick<Voter, 'recordId' | 'voterId' | 'fullName' | 'houseNumber'>[];
 }
 
@@ -344,10 +359,14 @@ export interface Notification {
 export interface ImportRow {
   rowNumber: number;
   voter: VoterInput;
+  /** Overwrite the existing voter with this Voter ID instead of skipping the row. */
+  replace?: boolean;
 }
 
 export interface ImportResult {
   imported: number;
+  /** Existing voters whose details were replaced by the file. */
+  replaced: number;
   skipped: number;
   failed: number;
   errors: { rowNumber: number; message: string }[];

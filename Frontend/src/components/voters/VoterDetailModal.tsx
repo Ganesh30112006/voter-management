@@ -5,7 +5,7 @@ import { useWards } from '../../hooks/useWards';
 import { voterService } from '../../services/voterService';
 import type { Voter, VoterListItem } from '../../types';
 import { formatCurrency, formatDateTime } from '../../utils/format';
-import { isSuperAdmin } from '../../utils/permissions';
+import { canManageWardData } from '../../utils/permissions';
 import { PaymentStatusBadge, TransactionStatusBadge, VoterStatusBadge } from '../common/Badges';
 import { Modal } from '../common/Modal';
 import { ErrorState, SkeletonLines } from '../common/States';
@@ -28,11 +28,11 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
   const { wardLabel, boothLabel } = useWards();
   const { data, error, reload } = useQuery(() => voterService.get(recordId), `${recordId}:${refreshKey}`);
   const v = data?.voter;
-  const superAdmin = isSuperAdmin(admin);
+  const canEdit = canManageWardData(admin);
 
   const footer = v && (
     <>
-      {superAdmin && (
+      {canEdit && (
         <>
           <button type="button" className="btn btn-secondary" onClick={() => onAddHouseholdMember(v)}>
             <UserPlus size={16} aria-hidden="true" /> Add household member
@@ -69,18 +69,18 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
 
           <dl className="detail-grid">
             <div>
-              <dt>Mobile number</dt>
-              <dd>{v.mobile || '—'}</dd>
-            </div>
-            <div>
               <dt>Ward / Booth</dt>
               <dd>
                 {wardLabel(v.wardId)} · {boothLabel(v.boothId)}
               </dd>
             </div>
             <div>
-              <dt>House number</dt>
+              <dt>House / door number</dt>
               <dd>{v.houseNumber}</dd>
+            </div>
+            <div>
+              <dt>Age / Gender</dt>
+              <dd>{[v.age ?? '', v.gender].filter((x) => x !== '').join(' · ') || '—'}</dd>
             </div>
             <div>
               <dt>Household ID</dt>
@@ -98,7 +98,8 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
                 <strong>✓ Received</strong> — {formatCurrency(v.latestPayment.amount)} to {v.latestPayment.receiverName} ({v.latestPayment.receiverMobile})
                 <br />
                 <span className="small">
-                  {formatDateTime(v.latestPayment.timestamp)} · recorded by {v.latestPayment.adminId}
+                  {formatDateTime(v.latestPayment.timestamp)}
+                  {v.latestPayment.adminId && ` · recorded by ${v.latestPayment.adminId}`}
                 </span>
               </div>
             </div>
@@ -115,7 +116,8 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
                     <span>
                       <strong className="small">{formatDateTime(t.timestamp)}</strong>
                       <span className="small muted" style={{ display: 'block' }}>
-                        To {t.receiverName} · by {t.adminId}
+                        To {t.receiverName}
+                        {t.adminId && ` · by ${t.adminId}`}
                       </span>
                     </span>
                     <span className="row">

@@ -67,7 +67,6 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
   // Only on request: the receiver may be someone other than the voter.
   const fillFromVoter = () => {
     setValue('receiverName', voter.fullName, { shouldValidate: true });
-    if (voter.mobile) setValue('receiverMobile', voter.mobile, { shouldValidate: true });
   };
 
   const save = async () => {
@@ -177,10 +176,6 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
               <div>
                 <dt>Booth</dt>
                 <dd>{boothLabel(voter.boothId)}</dd>
-              </div>
-              <div>
-                <dt>Mobile</dt>
-                <dd>{voter.mobile || '—'}</dd>
               </div>
               <div>
                 <dt>Voter status</dt>

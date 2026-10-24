@@ -25,7 +25,7 @@ interface Props {
   initialWardId?: string;
   initialBoothId?: string;
   initialPaymentStatus?: PaymentStatus | '';
-  /** Shows the "Add voter" and export actions (Super Admin only). */
+  /** Shows the "Add voter" and export actions (Super Admin, and Corporators in their wards). */
   manage?: boolean;
 }
 
@@ -47,7 +47,8 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
   const [boothId, setBoothId] = useState(initialBoothId);
   const [status, setStatus] = useState<VoterStatus | ''>('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>(initialPaymentStatus);
-  const [sort, setSort] = useState<SortState>({ sortBy: 'ward', sortDir: 'asc' });
+  // Voter ID order by default (the EPIC number printed on the roll).
+  const [sort, setSort] = useState<SortState>({ sortBy: 'voterId', sortDir: 'asc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const debouncedSearch = useDebounce(search.trim(), 300);
@@ -97,10 +98,14 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
           </button>
         ),
       },
-      { key: 'mobile', header: 'Mobile', render: (v) => v.mobile || <span className="muted">—</span> },
+      {
+        key: 'ageGender',
+        header: 'Age / Gender',
+        render: (v) => [v.age ?? '', v.gender].filter((x) => x !== '').join(' · ') || <span className="muted">—</span>,
+      },
       { key: 'ward', header: 'Ward', sortKey: 'ward', render: (v) => wardLabel(v.wardId) },
       { key: 'booth', header: 'Booth', sortKey: 'booth', render: (v) => boothLabel(v.boothId) },
-      { key: 'house', header: 'House No.', sortKey: 'houseNumber', render: (v) => v.houseNumber },
+      { key: 'house', header: 'House / Door No.', sortKey: 'houseNumber', render: (v) => v.houseNumber },
       { key: 'status', header: 'Voter Status', sortKey: 'status', render: (v) => <VoterStatusBadge status={v.status} /> },
       {
         key: 'payment',
@@ -137,11 +142,12 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
       const rows = await voterService.exportAll({ ...query, page: undefined, pageSize: undefined });
       downloadCsv(
         'voters.csv',
-        ['Voter ID', 'Full Name', 'Mobile', 'Ward', 'Booth', 'House Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
+        ['Voter ID', 'Full Name', 'Age', 'Gender', 'Ward', 'Booth', 'House / Door Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
         rows.map((v) => [
           v.voterId,
           v.fullName,
-          v.mobile,
+          v.age ?? '',
+          v.gender,
           wardLabel(v.wardId),
           boothLabel(v.boothId),
           v.houseNumber,
@@ -168,7 +174,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
         <div className="card-body">
           <div className="filters">
             <div className="filter-search">
-              <SearchInput value={search} onChange={resetPage(setSearch)} placeholder="Name, voter ID, mobile, house or household ID" />
+              <SearchInput value={search} onChange={resetPage(setSearch)} placeholder="Name, voter ID, door number or household ID" />
             </div>
             <label className="field">
               <span className="field-label">Ward</span>
@@ -220,7 +226,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
               </select>
             </label>
           </div>
-          {manage && superAdmin && (
+          {manage && (
             <div className="row" style={{ marginTop: 12, justifyContent: 'flex-end' }}>
               <button type="button" className="btn btn-secondary" onClick={exportCsv} disabled={exporting}>
                 <Download size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export CSV'}

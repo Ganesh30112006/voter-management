@@ -5,6 +5,8 @@ import { useForm } from 'react-hook-form';
 import { FormField } from '../../components/common/FormField';
 import { Modal } from '../../components/common/Modal';
 import { SkeletonLines } from '../../components/common/States';
+import { useCurrentAdmin } from '../../hooks/useAuth';
+import { useConfirm } from '../../hooks/useConfirm';
 import { adminService } from '../../services/adminService';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { wardService } from '../../services/wardService';
@@ -144,7 +146,10 @@ export function BoothFormModal({
   );
 }
 
-/** Choose which Corporators cover a ward, or which BLOs work a booth (only BLOs whose Corporator covers that ward). */
+/**
+ * Choose the Corporator of a ward (one per ward; changing it moves the ward), or which BLOs work a booth (only BLOs
+ * whose Corporator covers that ward; a Corporator sees only its own BLOs).
+ */
 export function AssignAdminsModal({
   target,
   title,
@@ -160,6 +165,8 @@ export function AssignAdminsModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const actor = useCurrentAdmin();
+  const confirm = useConfirm();
   const [admins, setAdmins] = useState<Admin[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>(assigned);
@@ -170,6 +177,8 @@ export function AssignAdminsModal({
     let active = true;
     const load = async (): Promise<Admin[]> => {
       if (target.kind === 'ward') return (await adminService.list({ role: 'CORPORATOR', pageSize: 500, sortBy: 'id' })).items;
+      // A Corporator only lists its own BLOs, and it covers this ward (it can only open its own wards).
+      if (actor.role === 'CORPORATOR') return (await adminService.list({ role: 'BLO', pageSize: 500, sortBy: 'id' })).items;
       const [blos, corporators] = await Promise.all([
         adminService.list({ role: 'BLO', pageSize: 500, sortBy: 'id' }),
         adminService.list({ role: 'CORPORATOR', pageSize: 500, sortBy: 'id' }),
@@ -186,6 +195,18 @@ export function AssignAdminsModal({
   }, []);
 
   const save = async () => {
+    // Giving the ward to a different Corporator takes it away from the current one: confirm the move.
+    const current = assigned[0];
+    if (target.kind === 'ward' && current && selected[0] !== current) {
+      const owner = admins?.find((a) => a.id === current);
+      const ok = await confirm({
+        title: selected[0] ? `Move this ward to ${selected[0]}?` : 'Remove the Corporator?',
+        message: `This ward is assigned to ${current}${owner ? ` (${owner.fullName})` : ''}. ${current} and their BLOs will lose it.`,
+        confirmLabel: selected[0] ? 'Move ward' : 'Remove',
+        tone: 'danger',
+      });
+      if (!ok) return;
+    }
     setSaving(true);
     setServerError(null);
     try {
@@ -230,13 +251,23 @@ export function AssignAdminsModal({
           </p>
         ) : (
           <div className="check-list" style={{ flexDirection: 'column', maxHeight: 320 }}>
+            {target.kind === 'ward' && (
+              <label className="check">
+                <input type="radio" name="ward-corporator" checked={selected.length === 0} onChange={() => setSelected([])} />
+                <span className="muted">No Corporator</span>
+              </label>
+            )}
             {admins?.map((a) => (
               <label key={a.id} className="check">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(a.id)}
-                  onChange={(e) => setSelected((s) => (e.target.checked ? [...s, a.id] : s.filter((x) => x !== a.id)))}
-                />
+                {target.kind === 'ward' ? (
+                  <input type="radio" name="ward-corporator" checked={selected[0] === a.id} onChange={() => setSelected([a.id])} />
+                ) : (
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(a.id)}
+                    onChange={(e) => setSelected((s) => (e.target.checked ? [...s, a.id] : s.filter((x) => x !== a.id)))}
+                  />
+                )}
                 <span>
                   {a.id} – {a.fullName}
                   {a.status === 'Inactive' && <span className="muted"> (inactive)</span>}

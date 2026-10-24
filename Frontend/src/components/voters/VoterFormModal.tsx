@@ -2,11 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { voterService } from '../../services/voterService';
-import { VOTER_STATUSES, type DuplicateCheckResult, type Voter, type VoterInput } from '../../types';
+import { GENDERS, VOTER_STATUSES, type DuplicateCheckResult, type Voter, type VoterInput } from '../../types';
+import { wardsInArea } from '../../utils/permissions';
 import { voterSchema, type VoterFormValues } from '../../utils/validation';
 import { FormField } from '../common/FormField';
 import { Modal } from '../common/Modal';
@@ -28,23 +30,27 @@ interface Props {
 const EMPTY: VoterFormValues = {
   voterId: '',
   fullName: '',
-  mobile: '',
   wardId: '',
   boothId: '',
   houseNumber: '',
   householdId: '',
   address: '',
   status: '',
+  age: '',
+  gender: '',
 };
 
 const FIELDS = Object.keys(EMPTY) as (keyof VoterFormValues)[];
 
 export function VoterFormModal({ state, onClose, onSaved }: Props) {
-  const { wards, boothsForWard, loaded } = useWards();
+  const admin = useCurrentAdmin();
+  const { wards: allWards, wardLabel, boothsForWard, loaded } = useWards();
+  // A Corporator adds and edits voters only in its own wards.
+  const wards = wardsInArea(admin, allWards);
   const [serverError, setServerError] = useState<string | null>(null);
   const [dupes, setDupes] = useState<DuplicateCheckResult | null>(null);
   // A ref, not state: the submit handler must see the value set by the button click in the same event.
-  const saveMode = useRef<'save' | 'another'>('save');
+  const saveMode = useRef<'save' | 'another' | 'replace'>('save');
 
   const {
     register,
@@ -56,7 +62,12 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
     formState: { errors, isSubmitting },
   } = useForm<VoterFormValues>({
     resolver: zodResolver(voterSchema),
-    defaultValues: { ...EMPTY, ...state.initial },
+    defaultValues: {
+      ...EMPTY,
+      ...state.initial,
+      age: state.initial?.age == null ? '' : String(state.initial.age),
+      gender: state.initial?.gender ?? '',
+    },
   });
 
   const wardId = watch('wardId');
@@ -93,10 +104,14 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
   const onSubmit = async (values: VoterFormValues) => {
     setServerError(null);
     const addAnother = saveMode.current === 'another';
+    const replace = saveMode.current === 'replace';
     saveMode.current = 'save'; // pressing Enter later should be a plain save
-    const input = voterSchema.parse(values) as VoterInput;
+    // The resolver already validated and converted the values (e.g. age text → number); do not parse them twice.
+    const input = values as unknown as VoterInput;
+    // "Replace its details": save over the voter that already has this Voter ID.
+    const targetId = replace && dupes?.existing ? dupes.existing.recordId : state.mode === 'edit' ? state.recordId : undefined;
     try {
-      const saved = state.mode === 'edit' && state.recordId ? await voterService.update(state.recordId, input) : await voterService.create(input);
+      const saved = targetId ? await voterService.update(targetId, input) : await voterService.create(input);
       onSaved(saved, addAnother);
     } catch (e) {
       if (e instanceof ApiError && e.fieldErrors) {
@@ -144,8 +159,24 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
           </div>
         )}
         {dupes?.voterIdExists && (
-          <div className="alert alert-warning">
-            <AlertTriangle size={18} aria-hidden="true" />A voter with this Voter ID already exists.
+          <div className="alert alert-warning" role="alert">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <div className="stack" style={{ gap: 8 }}>
+              <span>
+                This Voter ID already belongs to {dupes.existing ? `${dupes.existing.fullName} (${wardLabel(dupes.existing.wardId)})` : 'another voter'}.
+                {dupes.existing?.canReplace ? ' Choose what to do:' : ' It is outside your wards, so it cannot be replaced here.'}
+              </span>
+              {dupes.existing?.canReplace && state.mode === 'create' && (
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isSubmitting}>
+                    Keep the existing voter
+                  </button>
+                  <button type="submit" form="voter-form" className="btn btn-primary btn-sm" disabled={isSubmitting} onClick={() => (saveMode.current = 'replace')}>
+                    Replace its details with these
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
         {!!dupes?.similar.length && (
@@ -164,9 +195,6 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
           </FormField>
           <FormField label="Full name" error={errors.fullName?.message} required>
             <input className="input" autoComplete="off" {...register('fullName')} />
-          </FormField>
-          <FormField label="Mobile number" error={errors.mobile?.message} hint="Optional">
-            <input className="input" type="tel" inputMode="numeric" maxLength={14} {...register('mobile')} />
           </FormField>
           <FormField label="Voter status" error={errors.status?.message} required>
             <select className="select" {...register('status')}>
@@ -188,9 +216,9 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
               ))}
             </select>
           </FormField>
-          <FormField label="Booth" error={errors.boothId?.message} required hint={!wardId ? 'Select a ward first' : undefined}>
+          <FormField label="Booth" error={errors.boothId?.message} hint={!wardId ? 'Select a ward first' : 'Optional'}>
             <select className="select" {...register('boothId')}>
-              <option value="">{wardId ? 'Select booth' : 'Select a ward first'}</option>
+              <option value="">{wardId ? 'No booth' : 'Select a ward first'}</option>
               {booths.map((b) => (
                 <option key={b.id} value={b.id}>
                   Booth {b.number} – {b.name}
@@ -198,8 +226,21 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
               ))}
             </select>
           </FormField>
-          <FormField label="House number" error={errors.houseNumber?.message} required>
+          <FormField label="House / door number" error={errors.houseNumber?.message} required>
             <input className="input" autoComplete="off" {...register('houseNumber')} />
+          </FormField>
+          <FormField label="Age" error={errors.age?.message} hint="Optional">
+            <input className="input" type="number" inputMode="numeric" min={18} max={120} {...register('age')} />
+          </FormField>
+          <FormField label="Gender" error={errors.gender?.message} hint="Optional">
+            <select className="select" {...register('gender')}>
+              <option value="">Not given</option>
+              {GENDERS.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Household ID" error={errors.householdId?.message} hint="Optional. Members of one household share this ID.">
             <input className="input" autoComplete="off" {...register('householdId')} />

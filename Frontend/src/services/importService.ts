@@ -2,14 +2,22 @@ import * as XLSX from 'xlsx';
 import type { ImportContext, ImportResult, ImportRow } from '../types';
 import { downloadXlsx } from '../utils/download';
 import { IMPORT_FIELDS, TEMPLATE_HEADERS } from '../utils/importParser';
-import { readPdfLayout, type ElectoralRoll } from '../utils/pdfLayout';
+import { voterIdsInText, type ElectoralRoll } from '../utils/pdfLayout';
 import { apiClient } from './apiClient';
-import { PdfReadError, readPdfItems } from './pdfReader';
+import { PdfReadError, readPdfLayout, readPdfVoterIds } from './pdfReader';
 
 export const ACCEPTED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'] as const;
 export const ACCEPT_ATTR = '.xlsx,.xls,.csv,.pdf';
-export const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const BATCH_SIZE = 100;
+const MB = 1024 * 1024;
+/**
+ * Largest file per type. PDFs are read in small pieces, page by page, so they can be very large. Excel and
+ * CSV files are read whole by the browser; Excel cannot hold more than about 10 lakh rows anyway (~100 MB).
+ */
+export const MAX_BYTES: Record<string, number> = { '.pdf': 2048 * MB, '.xlsx': 100 * MB, '.xls': 100 * MB, '.csv': 200 * MB };
+/** Rows per upload request (the server accepts at most 500). */
+const BATCH_SIZE = 500;
+
+const sizeLabel = (bytes: number) => (bytes >= 1024 * MB ? `${bytes / (1024 * MB)} GB` : `${bytes / MB} MB`);
 
 function extensionOf(name: string): string {
   const i = name.lastIndexOf('.');
@@ -23,7 +31,7 @@ export async function validateImportFile(file: File): Promise<string | null> {
     return 'Unsupported file type. Upload an Excel (.xlsx, .xls), CSV (.csv) or PDF (.pdf) file.';
   }
   if (file.size === 0) return 'The file is empty.';
-  if (file.size > MAX_FILE_BYTES) return 'The file is larger than 10 MB. Split it into smaller files.';
+  if (file.size > MAX_BYTES[ext]) return `${ext.slice(1).toUpperCase()} files can be at most ${sizeLabel(MAX_BYTES[ext])}. Split it into smaller files.`;
   const head = new Uint8Array(await file.slice(0, 8).arrayBuffer());
   const isZip = head[0] === 0x50 && head[1] === 0x4b; // PK.. (xlsx)
   const isOle = head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0; // legacy xls
@@ -44,21 +52,25 @@ export async function validateImportFile(file: File): Promise<string | null> {
 }
 
 /** What a chosen file holds: worksheets (Excel, CSV or a table PDF) or an Election Commission roll. */
-export type ImportSource = { kind: 'sheets'; workbook: XLSX.WorkBook; fromPdf: boolean } | { kind: 'roll'; roll: ElectoralRoll };
+/** `textlessPages`: PDF pages with no readable text (scanned), which were skipped. */
+export type ImportSource =
+  | { kind: 'sheets'; workbook: XLSX.WorkBook; fromPdf: boolean; textlessPages: number[] }
+  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[] };
 
 /** A problem with the file's contents, worded for the user. */
 export class ImportFileError extends Error {}
 
-export async function readImportFile(file: File): Promise<ImportSource> {
+/** `onPdfProgress` reports pages read so far for PDFs (large rolls take a while). */
+export async function readImportFile(file: File, onPdfProgress?: (page: number, pages: number) => void): Promise<ImportSource> {
   const ext = extensionOf(file.name);
-  if (ext === '.pdf') return readPdf(file);
+  if (ext === '.pdf') return readPdf(file, onPdfProgress);
   if (ext === '.csv') {
     // raw: keep every value as typed so identifiers such as 00123 keep their leading zeros.
-    return { kind: 'sheets', workbook: XLSX.read(await file.text(), { type: 'string', raw: true }), fromPdf: false };
+    return { kind: 'sheets', workbook: XLSX.read(await file.text(), { type: 'string', raw: true }), fromPdf: false, textlessPages: [] };
   }
   const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
   for (const name of workbook.SheetNames) fullIntegers(workbook.Sheets[name]);
-  return { kind: 'sheets', workbook, fromPdf: false };
+  return { kind: 'sheets', workbook, fromPdf: false, textlessPages: [] };
 }
 
 /** Excel shows long whole numbers such as 919876543210 as "9.19877E+11"; use the full number instead. */
@@ -73,22 +85,21 @@ function fullIntegers(ws: XLSX.WorkSheet | undefined): void {
   }
 }
 
-async function readPdf(file: File): Promise<ImportSource> {
-  let items;
+async function readPdf(file: File, onProgress?: (page: number, pages: number) => void): Promise<ImportSource> {
+  let layout;
   try {
-    items = await readPdfItems(await file.arrayBuffer());
+    layout = await readPdfLayout(file, onProgress);
   } catch (e) {
     throw e instanceof PdfReadError ? new ImportFileError(e.message) : e;
   }
-  const layout = readPdfLayout(items);
   switch (layout.kind) {
     case 'table': {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(layout.rows), 'PDF table');
-      return { kind: 'sheets', workbook, fromPdf: true };
+      return { kind: 'sheets', workbook, fromPdf: true, textlessPages: layout.textlessPages };
     }
     case 'roll':
-      return { kind: 'roll', roll: layout.roll };
+      return { kind: 'roll', roll: layout.roll, textlessPages: layout.textlessPages };
     case 'no-text':
       throw new ImportFileError('This PDF has no readable text: it looks scanned or photographed. Use a typed PDF, or an Excel or CSV file.');
     default:
@@ -96,6 +107,34 @@ async function readPdf(file: File): Promise<ImportSource> {
         'No voter table was found in this PDF. It needs a table with column headings (like the template), or the Election Commission roll layout.',
       );
   }
+}
+
+/**
+ * Voter IDs listed in a file (a deaths / shifted list), in order, without repeats. PDFs: every EPIC number
+ * printed. Excel/CSV: every cell that is an EPIC number or an existing Voter ID (any case).
+ */
+export async function readVoterIdList(file: File, existingIds: Set<string>, onPdfProgress?: (page: number, pages: number) => void): Promise<string[]> {
+  if (extensionOf(file.name) === '.pdf') {
+    try {
+      return await readPdfVoterIds(file, onPdfProgress);
+    } catch (e) {
+      throw e instanceof PdfReadError ? new ImportFileError(e.message) : e;
+    }
+  }
+  const source = await readImportFile(file);
+  if (source.kind !== 'sheets') return [];
+  const ids = new Set<string>();
+  for (const name of source.workbook.SheetNames) {
+    for (const row of sheetRows(source.workbook, name)) {
+      for (const cell of row) {
+        const value = cell.trim();
+        if (!value) continue;
+        if (existingIds.has(value.toUpperCase())) ids.add(value.toUpperCase());
+        else voterIdsInText(value.toUpperCase()).forEach((id) => ids.add(id));
+      }
+    }
+  }
+  return [...ids];
 }
 
 /**
@@ -132,12 +171,10 @@ export function downloadTemplate(): void {
 
 function notesFor(key: string): string {
   switch (key) {
-    case 'mobile':
-      return '10-digit Indian mobile number, optional';
     case 'wardNumber':
       return 'Must match an existing ward number';
     case 'boothNumber':
-      return 'Must be a booth in that ward';
+      return 'Optional; a booth number in that ward. Anything else is ignored and the voter is added without a booth';
     case 'status':
       return 'Exactly one of: Active, Not Active, Shifted';
     case 'householdId':
