@@ -62,7 +62,7 @@ export function ProfilePage() {
                   </div>
                   <div>
                     <dt>Assigned booths</dt>
-                    <dd>{admin.boothIds.length ? admin.boothIds.map(boothLabel).join(', ') : 'All booths in assigned wards'}</dd>
+                    <dd>{admin.boothIds.length ? admin.boothIds.map(boothLabel).join(', ') : admin.wardIds.length ? 'All booths in assigned wards' : '—'}</dd>
                   </div>
                 </>
               )}

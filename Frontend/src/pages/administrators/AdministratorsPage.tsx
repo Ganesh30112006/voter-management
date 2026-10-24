@@ -81,7 +81,7 @@ export function AdministratorsPage() {
       ...(role === 'CORPORATOR' ? [{ key: 'location', header: 'Location', render: (a: Admin) => a.location || <span className="muted">—</span> }] : []),
       ...(showWards ? [{ key: 'wards', header: 'Wards', render: (a: Admin) => a.wardIds.map(wardLabel).join(', ') || '—' }] : []),
       ...(showBooths
-        ? [{ key: 'booths', header: 'Booths', render: (a: Admin) => (a.boothIds.length ? a.boothIds.map(boothLabel).join(', ') : <span className="muted">All in ward</span>) }]
+        ? [{ key: 'booths', header: 'Booths', render: (a: Admin) => (a.boothIds.length ? a.boothIds.map(boothLabel).join(', ') : <span className="muted">{a.wardIds.length ? 'All in ward' : '—'}</span>) }]
         : []),
       { key: 'status', header: 'Status', sortKey: 'status', render: (a) => <AccountStatusBadge status={a.status} /> },
       { key: 'created', header: 'Created', sortKey: 'createdAt', render: (a) => <span className="nowrap">{formatDate(a.createdAt)}</span> },
@@ -357,7 +357,7 @@ export function AdministratorsPage() {
             {detail.role === 'BLO' && (
               <div>
                 <dt>Booths</dt>
-                <dd>{detail.boothIds.length ? detail.boothIds.map(boothLabel).join(', ') : 'All booths in assigned wards'}</dd>
+                <dd>{detail.boothIds.length ? detail.boothIds.map(boothLabel).join(', ') : detail.wardIds.length ? 'All booths in assigned wards' : '—'}</dd>
               </div>
             )}
             <div>
