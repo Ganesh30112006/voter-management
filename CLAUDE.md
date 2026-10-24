@@ -73,7 +73,7 @@ Scripts: `migrate`, `create-super-admin` (first SA + initial payment amount, ide
 - Site: **https://main.d1il8v95socjri.amplifyapp.com** (Amplify app `d1il8v95socjri`, branch `main`)
 - API: **https://d37boaln3snj1u.cloudfront.net/api** (CloudFront `E3NW6NPUQSE0HH`, sends `X-Origin-Verify`) → EB app `voter-desk`, env `voter-desk-api` (single t4g.small, Node 24, SG `sg-0654d6e10ccee1637` = CloudFront prefix list only, default EB SG disabled) → RDS `khwaja` (PostgreSQL 17, db.t4g.micro, private, SG `sg-0fecc0ba01c39a3c8`, master user `Khwaja`, DB `voterdesk`, deletion protection, 7-day backups).
 - First Super Admin SA-1 (mobile 9966338451) was created with `create-super-admin` run on the EB instance through SSM (instance role has AmazonSSMManagedInstanceCore).
-- CD: GitHub OIDC roles `voterdesk-backend-deploy` (EB) and `voterdesk-frontend-deploy` (Amplify app only), trusted only for each repo's `production` environment. Pushing to `main` in either repo tests and deploys.
+- CD: GitHub OIDC roles `voterdesk-backend-deploy` (EB) and `voterdesk-frontend-deploy` (Amplify app only), trusted only for each repo's `production` environment. GitHub's OIDC subject includes numeric IDs (`repo:Ganesh30112006@204135162/<repo>@<repoId>:environment:production`; backend repo ID 1431622954, frontend 1430844586), so re-creating a repo means updating the role trust policy. Pushing to `main` in either repo tests and deploys.
 - Users are in Guntur/Vijayawada: served from CloudFront's Chennai edge (~0.2 s per request measured).
 
 ### Original plan (kept for reference)
