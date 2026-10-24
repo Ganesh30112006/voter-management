@@ -132,9 +132,10 @@ export const paymentSchema = z.object({
   amount: amountSchema,
   receiverName: z.string().trim().min(2, 'Receiver name is required').max(100),
   receiverMobile: mobileSchema,
+  givenByName: z.string().trim().min(2, 'Enter the name of the person giving the money').max(100),
 });
 /** Form state keeps numeric inputs as text; the schema converts them on submit. */
-export type PaymentFormValues = { amount: string; receiverName: string; receiverMobile: string };
+export type PaymentFormValues = { amount: string; receiverName: string; receiverMobile: string; givenByName: string };
 
 export const passwordSchema = z
   .object({

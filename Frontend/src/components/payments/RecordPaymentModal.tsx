@@ -2,11 +2,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AlertTriangle, CheckCircle2, Loader2, UserCheck } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { paymentService } from '../../services/paymentService';
 import type { PaymentContext, PaymentTransaction, VoterListItem } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatCurrency, formatDateTime, givenByLabel } from '../../utils/format';
 import { randomId } from '../../utils/id';
 import { paymentSchema, type PaymentFormValues } from '../../utils/validation';
 import { PaymentStatusBadge, VoterStatusBadge } from '../common/Badges';
@@ -26,6 +27,8 @@ type Step = 'form' | 'confirm' | 'done';
 
 export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
   const { wardLabel, boothLabel } = useWards();
+  // The account recording the payment is the one handing over the money.
+  const me = useCurrentAdmin();
   const [ctx, setCtx] = useState<PaymentContext | null>(null);
   const [ctxError, setCtxError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>('form');
@@ -44,7 +47,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
     formState: { errors },
   } = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
-    defaultValues: { amount: '', receiverName: '', receiverMobile: '' },
+    defaultValues: { amount: '', receiverName: '', receiverMobile: '', givenByName: me.fullName },
   });
 
   useEffect(() => {
@@ -79,6 +82,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
         amount: values.amount,
         receiverName: values.receiverName,
         receiverMobile: values.receiverMobile,
+        givenByName: values.givenByName,
         idempotencyKey: idempotencyKey.current,
       });
       setSaved(tx);
@@ -87,7 +91,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
     } catch (e) {
       if (e instanceof ApiError && e.fieldErrors) {
         for (const [field, msg] of Object.entries(e.fieldErrors)) {
-          if (field === 'amount' || field === 'receiverName' || field === 'receiverMobile') setError(field, { message: msg });
+          if (field === 'amount' || field === 'receiverName' || field === 'receiverMobile' || field === 'givenByName') setError(field, { message: msg });
         }
         setStep('form');
       }
@@ -151,10 +155,8 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
               <dd>{formatDateTime(saved.timestamp)}</dd>
             </div>
             <div>
-              <dt>Recorded by</dt>
-              <dd>
-                {saved.adminId} · {saved.adminName}
-              </dd>
+              <dt>Given by</dt>
+              <dd>{givenByLabel(saved)}</dd>
             </div>
           </dl>
         </div>
@@ -225,6 +227,12 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
                   <dt>Receiver mobile</dt>
                   <dd>{values.receiverMobile.trim()}</dd>
                 </div>
+                <div>
+                  <dt>Given by</dt>
+                  <dd>
+                    {values.givenByName.trim()} ({me.id})
+                  </dd>
+                </div>
               </dl>
             </div>
           ) : !ctx && !ctxError ? (
@@ -255,7 +263,14 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
                 <input className="input" type="tel" inputMode="numeric" autoComplete="off" placeholder="10-digit mobile" maxLength={14} {...register('receiverMobile')} />
               </FormField>
 
-              <p className="small muted">The date, time and your account are recorded automatically.</p>
+              <FormField
+                label="Given by (your name)"
+                error={errors.givenByName?.message}
+                required
+                hint={`Who is handing over the money. Saved with your account ${me.id}; the date and time are recorded automatically.`}
+              >
+                <input className="input" autoComplete="off" {...register('givenByName')} />
+              </FormField>
             </form>
           )}
         </div>

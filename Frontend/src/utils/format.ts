@@ -31,3 +31,8 @@ export function toDateInput(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+/** "Suresh (C-1-BLO1)": who handed over the cash and the account that recorded it; '' when not shown. */
+export function givenByLabel(t: { adminId: string; adminName: string; givenByName?: string }): string {
+  return t.adminId ? `${t.givenByName || t.adminName} (${t.adminId})` : '';
+}

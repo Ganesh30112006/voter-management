@@ -4,7 +4,7 @@ import { useQuery } from '../../hooks/useQuery';
 import { useWards } from '../../hooks/useWards';
 import { voterService } from '../../services/voterService';
 import type { Voter, VoterListItem } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatCurrency, formatDateTime, givenByLabel } from '../../utils/format';
 import { canManageWardData } from '../../utils/permissions';
 import { PaymentStatusBadge, TransactionStatusBadge, VoterStatusBadge } from '../common/Badges';
 import { Modal } from '../common/Modal';
@@ -117,7 +117,7 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
                       <strong className="small">{formatDateTime(t.timestamp)}</strong>
                       <span className="small muted" style={{ display: 'block' }}>
                         To {t.receiverName}
-                        {t.adminId && ` · by ${t.adminId}`}
+                        {t.adminId && ` · given by ${givenByLabel(t)}`}
                       </span>
                     </span>
                     <span className="row">

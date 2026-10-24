@@ -16,14 +16,16 @@ import { errorMessage } from '../../services/apiError';
 import { paymentService } from '../../services/paymentService';
 import type { PaymentQuery, PaymentTransaction, TransactionStatus } from '../../types';
 import { downloadCsv, downloadXlsx, type Cell } from '../../utils/download';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatCurrency, formatDateTime, givenByLabel } from '../../utils/format';
 import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 
-const HEADERS = ['Voter ID', 'Voter Name', 'Ward', 'Booth', 'Amount (INR)', 'Receiver Name', 'Receiver Mobile', 'Timestamp', 'Recorded By', 'Status'];
+const HEADERS = ['Voter ID', 'Voter Name', 'Ward', 'Booth', 'Amount (INR)', 'Receiver Name', 'Receiver Mobile', 'Timestamp', 'Given By', 'Status'];
 
 export function PaymentHistoryPage() {
   const admin = useCurrentAdmin();
   const superAdmin = isSuperAdmin(admin);
+  // A Super Admin filters by any account, a Corporator by itself or one of its BLOs.
+  const canFilterGiver = admin.role !== 'BLO';
   const toast = useToast();
   const { wards, booths, wardLabel, boothLabel } = useWards();
 
@@ -43,12 +45,12 @@ export function PaymentHistoryPage() {
   const debouncedSearch = useDebounce(search.trim(), 300);
 
   useEffect(() => {
-    if (!superAdmin) return;
+    if (!canFilterGiver) return;
     adminService
       .options()
       .then(setAdmins)
       .catch(() => setAdmins([]));
-  }, [superAdmin]);
+  }, [canFilterGiver]);
 
   const [sort, setSort] = useState<SortState>({ sortBy: 'timestamp', sortDir: 'desc' });
   const query: PaymentQuery = {
@@ -57,7 +59,7 @@ export function PaymentHistoryPage() {
     to,
     wardId,
     boothId,
-    adminId: superAdmin ? adminId : '',
+    adminId: canFilterGiver ? adminId : '',
     status,
     sortBy: sort.sortBy as PaymentQuery['sortBy'],
     sortDir: sort.sortDir,
@@ -83,7 +85,20 @@ export function PaymentHistoryPage() {
       { key: 'receiver', header: 'Receiver Name', sortKey: 'receiverName', render: (t) => t.receiverName },
       { key: 'receiverMobile', header: 'Receiver Mobile', render: (t) => <span className="mono">{t.receiverMobile}</span> },
       { key: 'timestamp', header: 'Timestamp', sortKey: 'timestamp', render: (t) => <span className="nowrap">{formatDateTime(t.timestamp)}</span> },
-      { key: 'admin', header: 'Recorded By', render: (t) => (t.adminId ? <span title={t.adminName}>{t.adminId}</span> : <span className="muted">—</span>) },
+      {
+        key: 'admin',
+        header: 'Given By',
+        render: (t) =>
+          t.adminId ? (
+            <span>
+              {t.givenByName || t.adminName}
+              <br />
+              <span className="small muted mono">{t.adminId}</span>
+            </span>
+          ) : (
+            <span className="muted">—</span>
+          ),
+      },
       { key: 'status', header: 'Status', render: (t) => <TransactionStatusBadge status={t.status} /> },
       {
         key: 'actions',
@@ -108,7 +123,7 @@ export function PaymentHistoryPage() {
     t.receiverName,
     t.receiverMobile,
     formatDateTime(t.timestamp),
-    t.adminId ? `${t.adminId} (${t.adminName})` : '',
+    givenByLabel(t),
     t.status,
   ];
 
@@ -187,11 +202,11 @@ export function PaymentHistoryPage() {
                 ))}
               </select>
             </label>
-            {superAdmin && (
+            {canFilterGiver && (
               <label className="field">
-                <span className="field-label">Recorded by</span>
+                <span className="field-label">Given by</span>
                 <select className="select" value={adminId} onChange={(e) => update(setAdminId)(e.target.value)}>
-                  <option value="">All admins</option>
+                  <option value="">{superAdmin ? 'All accounts' : 'Me and my BLOs'}</option>
                   {admins.map((a) => (
                     <option key={a.id} value={a.id}>
                       {a.id} – {a.fullName}

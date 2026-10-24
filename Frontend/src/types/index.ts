@@ -159,6 +159,8 @@ export interface PaymentTransaction {
   timestamp: string;
   adminId: string;
   adminName: string;
+  /** Who handed over the cash, as entered on the payment form (prefilled with the account name). */
+  givenByName: string;
   status: TransactionStatus;
   statusReason?: string;
 }
@@ -168,6 +170,7 @@ export interface PaymentInput {
   amount: number;
   receiverName: string;
   receiverMobile: string;
+  givenByName: string;
   /** Client-generated key so a retried request cannot create two transactions. */
   idempotencyKey: string;
 }

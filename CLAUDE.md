@@ -19,6 +19,7 @@ Session memory for this project. Read it fully before starting work.
 > - **Corporators have full control inside their own wards** (user, 2026-10-24): add/edit/import voters, status lists, booths and their BLOs, cancel payments. Wards and a ward's Corporator stay Super Admin only. **A ward has one Corporator**: giving a taken ward asks the Super Admin to **Move** or **Cancel**.
 > - **Existing Voter ID** on import or add: the user chooses **Keep the existing voter** or **Replace its details** (payments stay with the voter).
 > - **Corporators and BLOs are never shown Super Admins**: no SA accounts in lists, and work an SA did carries no recorder (blank); settings changes notify only "Payment details · Successfully updated".
+> - **"Given by"** (user, 2026-10-24): the payment form has a required **"Given by (your name)"** field for everyone who records a payment, prefilled with the account name and editable (stored as `given_by_name`, migration 005; older payments were filled with the account name). Shown as "Name (account ID)" on the confirm step, receipt, payment details, voter history and Payment History (column + export). Never put it in audit summaries (they are shown in payment details, and an SA's typed name would leak); `hideSuperAdmin` blanks it. Corporators can filter Payment History by themselves or one of their own BLOs (server-checked; a Super Admin ID returns nothing).
 
 ---
 
@@ -63,7 +64,7 @@ Testing tip: in Playwright, logging in through the form makes Chrome's "Save pas
 ## 4. Backend (complete): `Backend/`, see `Backend/README.md`
 
 Node + TypeScript + Express 5 + PostgreSQL (`pg`, plain SQL migrations in `Backend/migrations/`). No Docker: `npm run db:local` runs a real PostgreSQL from the `embedded-postgres` npm package (data in `Backend/.pgdata`); tests start their own. Local API port is **4000** in `Backend/.env`: on this PC, 8080 is used by Jenkins and 8090 by a Wondershare app.
-Run: `npm run db:local` (terminal 1) → `create-super-admin` once (see README) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (50 API tests against real Postgres; sample data in `test/fixtures.ts`), `npm run build`. All pass, and the full browser flow was verified against the real API.
+Run: `npm run db:local` (terminal 1) → `create-super-admin` once (see README) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (51 API tests against real Postgres; sample data in `test/fixtures.ts`), `npm run build`. All pass, and the full browser flow was verified against the real API.
 
 Conventions: JSON; `Authorization: Bearer <token>` (only a SHA-256 of tokens is stored); errors `{message, code?, fieldErrors?}` with 400/401/403/404/409; lists `?page&pageSize&sortBy&sortDir` → `{items,total,page,pageSize}`; sort keys are whitelisted, everything else is parameterised.
 

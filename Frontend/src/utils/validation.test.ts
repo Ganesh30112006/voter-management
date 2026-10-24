@@ -41,13 +41,14 @@ describe('voter status', () => {
 });
 
 describe('payment form', () => {
-  it('requires amount, receiver name and receiver mobile', () => {
-    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(true);
-    expect(paymentSchema.safeParse({ amount: '', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(paymentSchema.safeParse({ amount: '0', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(paymentSchema.safeParse({ amount: '20.5', receiverName: 'Ravi', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(paymentSchema.safeParse({ amount: '2000', receiverName: '', receiverMobile: '9876543210' }).success).toBe(false);
-    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '12345' }).success).toBe(false);
+  it('requires amount, receiver name, receiver mobile and the giver name', () => {
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '9876543210', givenByName: 'Lakshmi' }).success).toBe(true);
+    expect(paymentSchema.safeParse({ amount: '', receiverName: 'Ravi', receiverMobile: '9876543210', givenByName: 'Lakshmi' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '0', receiverName: 'Ravi', receiverMobile: '9876543210', givenByName: 'Lakshmi' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '20.5', receiverName: 'Ravi', receiverMobile: '9876543210', givenByName: 'Lakshmi' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: '', receiverMobile: '9876543210', givenByName: 'Lakshmi' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '12345', givenByName: 'Lakshmi' }).success).toBe(false);
+    expect(paymentSchema.safeParse({ amount: '2000', receiverName: 'Ravi', receiverMobile: '9876543210', givenByName: ' ' }).success).toBe(false);
   });
 });
 

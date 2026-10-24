@@ -7,7 +7,7 @@ import { useWards } from '../../hooks/useWards';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { paymentService } from '../../services/paymentService';
 import type { CancelPaymentInput, PaymentTransaction } from '../../types';
-import { formatCurrency, formatDateTime } from '../../utils/format';
+import { formatCurrency, formatDateTime, givenByLabel } from '../../utils/format';
 import { canManageWardData } from '../../utils/permissions';
 import { TransactionStatusBadge } from '../common/Badges';
 import { FormField } from '../common/FormField';
@@ -132,10 +132,8 @@ export function TransactionDetailModal({ transactionId, onClose, onChanged }: Pr
             </div>
             {tx.adminId && (
               <div>
-                <dt>Recorded by</dt>
-                <dd>
-                  {tx.adminId} · {tx.adminName}
-                </dd>
+                <dt>Given by</dt>
+                <dd>{givenByLabel(tx)}</dd>
               </div>
             )}
             {tx.statusReason && (
