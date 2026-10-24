@@ -15,7 +15,7 @@ interface Props {
   onUpdated: () => void;
 }
 
-type Result = { updated: number; unchanged: number; notFound: string[]; outsideArea: string[] };
+type Result = { updated: number; unchanged: number; notFound: string[] };
 
 /**
  * Updates voter status from a list such as deceased or shifted voters: every Voter ID (EPIC) in the file is
@@ -127,20 +127,7 @@ export function StatusUpdatePanel({ existingVoterIds, onUpdated }: Props) {
             <strong>{formatNumber(missing.length + result.notFound.length)}</strong>
             <span>Not in Voter Desk</span>
           </div>
-          {result.outsideArea.length > 0 && (
-            <div>
-              <strong>{formatNumber(result.outsideArea.length)}</strong>
-              <span>In wards not assigned to you</span>
-            </div>
-          )}
         </div>
-        {result.outsideArea.length > 0 && (
-          <div>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadMissing(result.outsideArea)}>
-              <Download size={14} aria-hidden="true" /> Download voters outside your wards
-            </button>
-          </div>
-        )}
         <div>
           <button type="button" className="btn btn-primary" onClick={reset}>
             <UploadCloud size={16} aria-hidden="true" /> Update from another file

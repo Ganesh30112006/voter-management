@@ -34,16 +34,14 @@ export const voterService = {
     status: VoterStatus,
     fileName: string,
     onProgress: (done: number, total: number) => void,
-  ): Promise<{ updated: number; unchanged: number; notFound: string[]; outsideArea: string[] }> {
-    const total = { updated: 0, unchanged: 0, notFound: [] as string[], outsideArea: [] as string[] };
+  ): Promise<{ updated: number; unchanged: number; notFound: string[] }> {
+    const total = { updated: 0, unchanged: 0, notFound: [] as string[] };
     for (let i = 0; i < voterIds.length; i += 1000) {
       const batch = voterIds.slice(i, i + 1000);
       const r = (await apiClient.post<typeof total>('/voters/status', { voterIds: batch, status, fileName })).data;
       total.updated += r.updated;
       total.unchanged += r.unchanged;
       total.notFound.push(...r.notFound);
-      // A Corporator's request leaves voters in other wards unchanged.
-      total.outsideArea.push(...(r.outsideArea ?? []));
       onProgress(Math.min(i + 1000, voterIds.length), voterIds.length);
     }
     return total;
