@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertTriangle, Loader2, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { FormField } from '../../components/common/FormField';
@@ -8,10 +8,8 @@ import { ErrorState, SkeletonLines } from '../../components/common/States';
 import { useConfirm } from '../../hooks/useConfirm';
 import { useQuery } from '../../hooks/useQuery';
 import { useToast } from '../../hooks/useToast';
-import { USE_MOCK } from '../../services/apiClient';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { settingsService } from '../../services/settingsService';
-import { tokenStorage } from '../../services/tokenStorage';
 import type { SettingsResponse } from '../../types';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import { settingsSchema, type SettingsFormValues } from '../../utils/validation';
@@ -71,7 +69,6 @@ export function SettingsPage() {
               </table>
             </div>
           </section>
-          {USE_MOCK && <DevTools />}
         </div>
       )}
     </>
@@ -169,34 +166,6 @@ function PaymentSettingsForm({ data, onSaved }: { data: SettingsResponse; onSave
           </button>
         </div>
       </form>
-    </section>
-  );
-}
-
-function DevTools() {
-  const confirm = useConfirm();
-  const reset = async () => {
-    const ok = await confirm({
-      title: 'Reset demo data?',
-      message: 'All mock voters, admins, payments and audit logs in this browser are replaced with fresh sample data. You will be signed out.',
-      confirmLabel: 'Reset',
-      tone: 'danger',
-    });
-    if (!ok) return;
-    const { resetMockDb } = await import('../../mocks/mockServer');
-    resetMockDb();
-    tokenStorage.clear();
-    window.location.assign('/login');
-  };
-  return (
-    <section className="card card-body">
-      <h2>Development</h2>
-      <p className="small muted" style={{ margin: '4px 0 12px' }}>
-        Mock data is stored in this browser only.
-      </p>
-      <button type="button" className="btn btn-secondary" onClick={reset}>
-        <RotateCcw size={16} aria-hidden="true" /> Reset demo data
-      </button>
     </section>
   );
 }

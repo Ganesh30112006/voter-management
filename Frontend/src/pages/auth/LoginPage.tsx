@@ -1,11 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { AlertCircle, Eye, EyeOff, Loader2, LogIn, Vote } from 'lucide-react';
-import { useState } from 'react';
+import { AlertCircle, Eye, EyeOff, Loader2, LogIn } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { FormField } from '../../components/common/FormField';
 import { useAuth } from '../../hooks/useAuth';
-import { USE_MOCK } from '../../services/apiClient';
 import { errorMessage } from '../../services/apiError';
 import { loginSchema, type LoginForm } from '../../utils/validation';
 import './AuthPages.css';
@@ -18,6 +17,15 @@ export function LoginPage() {
   // Only return to a path on this site: "//host" or "/\host" would leave it.
   const from = /^\/(?![/\\])/.test(requested) ? requested : '/';
   const [showPassword, setShowPassword] = useState(false);
+
+  // The sign-in page shows no product name, including in the browser tab.
+  useEffect(() => {
+    const previous = document.title;
+    document.title = 'Login';
+    return () => {
+      document.title = previous;
+    };
+  }, []);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -42,17 +50,7 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card card">
-        <div className="auth-brand">
-          <span className="auth-logo">
-            <Vote size={24} aria-hidden="true" />
-          </span>
-          <div>
-            <h1>Voter Desk</h1>
-            <p className="muted small">Voting Management System</p>
-          </div>
-        </div>
-
-        <h2 className="auth-title">Sign in</h2>
+        <h1 className="auth-title">Login</h1>
 
         {sessionExpired && !serverError && (
           <div className="alert alert-warning">
@@ -110,15 +108,6 @@ export function LoginPage() {
             {isSubmitting ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        <p className="small muted">Your password is set by the Super Admin. Contact them if you cannot sign in.</p>
-
-        {USE_MOCK && (
-          <p className="auth-dev-note">
-            Development mode: Super Admin <strong>9000000001</strong>, Corporator C-1 <strong>9876543210</strong>, BLO C-1-BLO1{' '}
-            <strong>9876543211</strong>. Password: the value of <code>VITE_MOCK_PASSWORD</code>.
-          </p>
-        )}
       </div>
     </div>
   );

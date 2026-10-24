@@ -17,36 +17,8 @@
   box-shadow: var(--shadow-lg);
 }
 
-.auth-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.auth-brand h1 {
-  font-size: 1.125rem;
-}
-.auth-logo {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 44px;
-  border-radius: 10px;
-  background: var(--color-primary);
-  color: #fff;
-}
-
 .auth-title {
   font-size: 1.25rem;
-  margin-top: 4px;
-}
-
-.auth-dev-note {
-  padding: 10px 12px;
-  border-radius: var(--radius);
-  background: var(--color-warning-soft);
-  color: #92400e;
-  font-size: 0.75rem;
 }
 
 @media (max-width: 640px) {

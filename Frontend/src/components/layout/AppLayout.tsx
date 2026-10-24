@@ -1,8 +1,6 @@
-import { FlaskConical } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { WardsProvider } from '../../hooks/useWards';
-import { USE_MOCK } from '../../services/apiClient';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import './AppLayout.css';
@@ -45,14 +43,6 @@ export function AppLayout() {
         <Sidebar collapsed={collapsed} onToggleCollapsed={toggleCollapsed} mobileOpen={mobileOpen} onCloseMobile={() => setMobileOpen(false)} />
         <div className="app-main">
           <Topbar onOpenMenu={() => setMobileOpen(true)} />
-          {USE_MOCK && (
-            <div className="dev-banner">
-              <FlaskConical size={14} aria-hidden="true" />{' '}
-              {import.meta.env.VITE_DEMO_MODE === 'true'
-                ? 'Demo mode — sample data, saved only in this browser.'
-                : 'Development mode — all figures are mock data.'}
-            </div>
-          )}
           <main id="main" className="app-content" tabIndex={-1}>
             <Outlet />
           </main>

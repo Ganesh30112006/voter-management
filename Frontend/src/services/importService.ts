@@ -3,7 +3,7 @@ import type { ImportContext, ImportResult, ImportRow } from '../types';
 import { downloadXlsx } from '../utils/download';
 import { IMPORT_FIELDS, TEMPLATE_HEADERS } from '../utils/importParser';
 import { readPdfLayout, type ElectoralRoll } from '../utils/pdfLayout';
-import { apiClient, mockCall, USE_MOCK } from './apiClient';
+import { apiClient } from './apiClient';
 import { PdfReadError, readPdfItems } from './pdfReader';
 
 export const ACCEPTED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'] as const;
@@ -149,7 +149,6 @@ function notesFor(key: string): string {
 
 export const importService = {
   context(): Promise<ImportContext> {
-    if (USE_MOCK) return mockCall((s, t) => s.importContext(t));
     return apiClient.get<ImportContext>('/imports/context').then((r) => r.data);
   },
 
@@ -160,17 +159,13 @@ export const importService = {
     skippedBeforeUpload: number,
     onProgress: (done: number, total: number) => void,
   ): Promise<ImportResult> {
-    const { importId } = USE_MOCK
-      ? await mockCall((s, t) => s.startImport(t, fileName))
-      : (await apiClient.post<{ importId: string }>('/imports', { fileName })).data;
+    const { importId } = (await apiClient.post<{ importId: string }>('/imports', { fileName })).data;
     onProgress(0, rows.length);
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
       const batch = rows.slice(i, i + BATCH_SIZE);
-      if (USE_MOCK) await mockCall((s, t) => s.importBatch(t, importId, batch));
-      else await apiClient.post(`/imports/${encodeURIComponent(importId)}/rows`, { rows: batch });
+      await apiClient.post(`/imports/${encodeURIComponent(importId)}/rows`, { rows: batch });
       onProgress(Math.min(i + BATCH_SIZE, rows.length), rows.length);
     }
-    if (USE_MOCK) return mockCall((s, t) => s.finishImport(t, importId, skippedBeforeUpload));
     return (await apiClient.post<ImportResult>(`/imports/${encodeURIComponent(importId)}/complete`, { skippedBeforeUpload })).data;
   },
 };

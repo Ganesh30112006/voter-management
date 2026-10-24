@@ -14,18 +14,6 @@
   outline: none;
 }
 
-.dev-banner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 5px 12px;
-  background: var(--color-warning-soft);
-  color: #92400e;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
 .skip-link {
   position: absolute;
   left: -9999px;

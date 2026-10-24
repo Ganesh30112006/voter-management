@@ -43,24 +43,22 @@ A system for an organization that distributes donations to voters.
 
 ## 3. Frontend (complete)
 
-Run with the mock: `cd Frontend && npm install && npm run dev` → http://localhost:5173.
-Against the real API: `VITE_USE_MOCK=false VITE_API_BASE_URL=http://localhost:4000/api npx vite` (or edit `.env.development`).
-Checks: `npm run typecheck`, `npm test` (54 Vitest tests), `npm run build`. All pass.
-
-Dev logins (password `demo@123`; mobile **or** full name): Super Admin `9000000001` ("Super Administrator"); Corporators C-1 `9876543210` "Ramesh Babu" (wards 1–2), C-2 `9876500011` (ward 3), C-3 `9123456780` (ward 4), C-4 `8098765432` (inactive); BLOs C-1-BLO1 `9876543211` "Lakshmi Prasad" (ward 1, booths 11–12), C-1-BLO2 `9876543212` (ward 2), C-2-BLO1 `9876500012` (booth 31), C-3-BLO1 `9123456781` (booth 41). The backend demo seed has the same accounts and data.
+**No mock / demo mode** (user, 2026-10-24): the frontend always talks to the real API; the mock server, demo seed and Vercel demo were removed. The login page shows only the login form (no product name, no test credentials; tab title "Login").
+Run: start the backend (section 4), then `cd Frontend && npm install && npm run dev` → http://localhost:5173 (`.env.development` points at http://localhost:4000/api).
+Checks: `npm run typecheck`, `npm test` (24 Vitest tests), `npm run build`. All pass.
 
 Screens: Login (mobile or name) · Dashboard (role-specific) · Accounts (SA: Corporators / BLOs / Super Admins tabs; Corporator: "My BLOs") · Wards & Booths (Corporators on wards, BLOs on booths) · Voters (SA: manage; others: "My Voters" in their area) · Import (Excel/CSV/PDF; heading row found below title rows; real spreadsheet row numbers) · Payment Management · Payment History (no payment ID shown; SA cancel/reverse) · Reports · Audit Logs (SA) · Settings (SA) · My Profile.
 
-Key files: `Frontend/src/utils/importParser.ts` + `utils/pdfLayout.ts` (PDF table / electoral-roll reading) + `services/pdfReader.ts` · `Frontend/src/types/index.ts` (the API contract) · `src/services/*.ts` (REST or mock) · `src/mocks/mockServer.ts` (reference rules, mirrored by the backend) · `src/mocks/db.ts` (seed) · `src/utils/permissions.ts` (roles/scope helpers) · `src/utils/validation.ts`.
+Key files: `Frontend/src/utils/importParser.ts` + `utils/pdfLayout.ts` (PDF table / electoral-roll reading) + `services/pdfReader.ts` · `Frontend/src/types/index.ts` (the API contract) · `src/services/*.ts` (REST) · `src/utils/permissions.ts` (roles/scope helpers) · `src/utils/validation.ts`.
 
-**Vercel demo:** root `vercel.json` builds `npm run build:demo` (mock on, data per browser). **AWS Amplify:** root `amplify.yml` builds the real frontend; set `VITE_API_BASE_URL` in Amplify.
+**AWS Amplify:** deployed by GitHub Actions (`.github/workflows/frontend-ci.yml`), which builds with `VITE_API_BASE_URL` and publishes to the Amplify app. `amplify.yml` is only for a Git-connected Amplify build.
 
 Testing tip: in Playwright, logging in through the form makes Chrome's "Save password?" bubble swallow later clicks. Log in by calling the login API (or mock `login()`) from `page.evaluate` and putting the token in `sessionStorage['vms-token']`.
 
 ## 4. Backend (complete): `Backend/`, see `Backend/README.md`
 
 Node + TypeScript + Express 5 + PostgreSQL (`pg`, plain SQL migrations in `Backend/migrations/`). No Docker: `npm run db:local` runs a real PostgreSQL from the `embedded-postgres` npm package (data in `Backend/.pgdata`); tests start their own. Local API port is **4000** in `Backend/.env`: on this PC, 8080 is used by Jenkins and 8090 by a Wondershare app.
-Run: `npm run db:local` (terminal 1) → `npm run seed:demo` (once) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (41 API tests against real Postgres), `npm run build`. All pass, and the full browser flow was verified against the real API.
+Run: `npm run db:local` (terminal 1) → `create-super-admin` once (see README) → `npm run dev`. Checks: `npm run typecheck`, `npm test` (43 API tests against real Postgres; sample data in `test/fixtures.ts`), `npm run build`. All pass, and the full browser flow was verified against the real API.
 
 Conventions: JSON; `Authorization: Bearer <token>` (only a SHA-256 of tokens is stored); errors `{message, code?, fieldErrors?}` with 400/401/403/404/409; lists `?page&pageSize&sortBy&sortDir` → `{items,total,page,pageSize}`; sort keys are whitelisted, everything else is parameterised.
 
@@ -68,9 +66,17 @@ Endpoints (all under `/api`): `auth/*` (login `{identifier,password,remember}`, 
 
 Database guarantees: unique admin mobile; voter ID unique case-insensitive (text, leading zeros kept); **partial unique index: one Success payment per voter** (receiver deliberately not unique); voter row locked while paying; append-only `audit_logs` (trigger); gapless counters for `SA-n`, `C-n`, `VR-`, `TXN-`, `AUD-`; per-Corporator `blo_counter` for `C-n-BLOm`.
 
-Scripts: `migrate`, `create-super-admin` (first SA + initial payment amount, idempotent), `seed:demo` (dev only, empty DB), `db:local`.
+Scripts: `migrate`, `create-super-admin` (first SA + initial payment amount, idempotent), `db:local`. The local dev database was wiped on 2026-10-24 (no demo data).
 
-## 5. Deployment (next)
+## 5. Deployment (LIVE since 2026-10-24, Mumbai ap-south-1, account 492462083767)
+
+- Site: **https://main.d1il8v95socjri.amplifyapp.com** (Amplify app `d1il8v95socjri`, branch `main`)
+- API: **https://d37boaln3snj1u.cloudfront.net/api** (CloudFront `E3NW6NPUQSE0HH`, sends `X-Origin-Verify`) → EB app `voter-desk`, env `voter-desk-api` (single t4g.small, Node 24, SG `sg-0654d6e10ccee1637` = CloudFront prefix list only, default EB SG disabled) → RDS `khwaja` (PostgreSQL 17, db.t4g.micro, private, SG `sg-0fecc0ba01c39a3c8`, master user `Khwaja`, DB `voterdesk`, deletion protection, 7-day backups).
+- First Super Admin SA-1 (mobile 9966338451) was created with `create-super-admin` run on the EB instance through SSM (instance role has AmazonSSMManagedInstanceCore).
+- CD: GitHub OIDC roles `voterdesk-backend-deploy` (EB) and `voterdesk-frontend-deploy` (Amplify app only), trusted only for each repo's `production` environment. Pushing to `main` in either repo tests and deploys.
+- Users are in Guntur/Vijayawada: served from CloudFront's Chennai edge (~0.2 s per request measured).
+
+### Original plan (kept for reference)
 
 Target: **AWS Elastic Beanstalk (Node.js platform) + RDS PostgreSQL** for the API, **AWS Amplify Hosting** for the frontend. `Backend/deploy/package-eb.ps1` builds `deploy/voter-desk-backend.zip` (includes the RDS CA bundle and `.ebextensions/voterdesk.config`: health check `/api/health`, `TRUST_PROXY=1`, TLS to RDS). The API runs migrations on start; run `create-super-admin` once against RDS.
 Decided (2026-10-24): region **ap-south-1 (Mumbai)**; **RDS PostgreSQL** (not DynamoDB: the backend needs SQL/transactions; >1 lakh voters measured fine: lists/search 30–130 ms, SA reports ~0.7 s with 1.5 lakh voters); **single EB instance behind CloudFront** (no domain yet; `ORIGIN_SECRET` header so only CloudFront reaches the API; `TRUST_PROXY=2`); add a load balancer + ACM certificate when the user buys a domain.
