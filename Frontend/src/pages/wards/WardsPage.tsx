@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Pencil, Plus, UserCog, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, IndianRupee, Pencil, Plus, UserCog, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -10,15 +10,17 @@ import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useWards } from '../../hooks/useWards';
 import { wardService } from '../../services/wardService';
 import type { Booth, Ward, WardSummary } from '../../types';
-import { formatNumber } from '../../utils/format';
+import { paymentService } from '../../services/paymentService';
+import { formatCurrency, formatNumber } from '../../utils/format';
 import { isSuperAdmin } from '../../utils/permissions';
-import { AssignAdminsModal, BoothFormModal, WardFormModal } from './WardModals';
+import { AssignAdminsModal, BoothFormModal, WardAmountModal, WardFormModal } from './WardModals';
 import './WardsPage.css';
 
 type Dialog =
   | { kind: 'ward'; ward?: Ward }
   | { kind: 'booth'; booth?: Booth; wardId?: string }
   | { kind: 'assignWard'; ward: WardSummary }
+  | { kind: 'amount'; ward: WardSummary }
   | { kind: 'assignBooth'; booth: WardSummary['booths'][number]; wardNumber: number };
 
 export function WardsPage() {
@@ -28,6 +30,7 @@ export function WardsPage() {
   const { reload: reloadReference } = useWards();
   const [refreshKey, setRefreshKey] = useState(0);
   const { data, loading, error, reload } = useQuery(() => wardService.summaries(), String(refreshKey));
+  const { data: ctx } = useQuery(() => paymentService.context(), 'payment-context');
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<Dialog | null>(null);
@@ -114,11 +117,17 @@ export function WardsPage() {
                     <span>{formatNumber(w.booths.length)} booths</span>
                     <span>{formatNumber(w.voterCount)} voters</span>
                     <span>{w.adminIds.length ? w.adminIds.join(', ') : 'No Corporator'}</span>
+                    <span>
+                      Amount: {w.paymentAmount !== null ? formatCurrency(w.paymentAmount) : ctx ? `${formatCurrency(ctx.defaultAmount)} (overall)` : '…'}
+                    </span>
                   </div>
                   <div className="row ward-actions">
                     <Link to={`/voters?ward=${encodeURIComponent(w.id)}`} className="btn btn-ghost btn-sm">
                       <Users size={15} aria-hidden="true" /> Voters
                     </Link>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'amount', ward: w })}>
+                      <IndianRupee size={15} aria-hidden="true" /> Amount
+                    </button>
                     {superAdmin && (
                       <>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'assignWard', ward: w })}>
@@ -188,6 +197,14 @@ export function WardsPage() {
             setExpanded((s) => new Set(s).add(b.wardId));
             afterChange(`Booth ${b.number} saved.`);
           }}
+        />
+      )}
+      {dialog?.kind === 'amount' && (
+        <WardAmountModal
+          ward={dialog.ward}
+          defaultAmount={ctx?.defaultAmount ?? null}
+          onClose={() => setDialog(null)}
+          onSaved={() => afterChange(`Ward ${dialog.ward.number} payment amount saved.`)}
         />
       )}
       {dialog?.kind === 'assignWard' && (

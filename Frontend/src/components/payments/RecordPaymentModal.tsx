@@ -53,7 +53,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
   useEffect(() => {
     let active = true;
     paymentService
-      .context()
+      .context(voter.wardId)
       .then((c) => {
         if (!active) return;
         setCtx(c);
@@ -63,7 +63,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
     return () => {
       active = false;
     };
-  }, [setValue]);
+  }, [setValue, voter.wardId]);
 
   const alreadyReceived = voter.paymentStatus === 'Received';
 

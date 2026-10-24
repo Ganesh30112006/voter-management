@@ -70,6 +70,8 @@ export interface Booth {
 }
 
 export interface WardSummary extends Ward {
+  /** The ward's own payment amount; null uses the overall amount. */
+  paymentAmount: number | null;
   voterCount: number;
   adminIds: string[];
   booths: (Booth & { voterCount: number; adminIds: string[] })[];
@@ -270,9 +272,14 @@ export interface ReportFilters {
 }
 
 export interface PaymentContext {
+  /** The ward's own amount when it has one, otherwise the overall amount. */
   suggestedAmount: number;
   /** Whether the prefilled amount may be changed (Settings). */
   amountEditable: boolean;
+  /** The overall amount from Settings. */
+  defaultAmount: number;
+  /** Wards in the caller's area that have their own amount. */
+  wardAmounts: { wardId: string; amount: number }[];
 }
 
 export interface VoterDetail {
@@ -347,6 +354,8 @@ export interface ReportData {
   byWard: GroupRow[];
   byBooth: GroupRow[];
   byAdmin: { adminId: string; adminName: string; transactions: number; amount: number; uniqueVoters: number }[];
+  /** Money given out by each BLO (Super Admin: every BLO; Corporator: its own BLOs; BLO: empty). */
+  byBlo: { adminId: string; adminName: string; corporatorId: string; status: AccountStatus; transactions: number; amount: number; uniqueVoters: number }[];
   daily: { date: string; transactions: number; uniqueVoters: number; amount: number }[];
   monthly: { month: string; transactions: number; uniqueVoters: number; amount: number }[];
 }

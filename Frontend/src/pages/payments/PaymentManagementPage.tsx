@@ -3,11 +3,13 @@ import { PageHeader } from '../../components/common/PageHeader';
 import { VoterWorkspace } from '../../components/voters/VoterWorkspace';
 import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useQuery } from '../../hooks/useQuery';
+import { useWards } from '../../hooks/useWards';
 import { paymentService } from '../../services/paymentService';
 import { formatCurrency } from '../../utils/format';
 
 export function PaymentManagementPage() {
   const admin = useCurrentAdmin();
+  const { wardLabel } = useWards();
   const { data: ctx } = useQuery(() => paymentService.context(), 'payment-context');
 
   return (
@@ -17,8 +19,11 @@ export function PaymentManagementPage() {
       <div className="alert alert-info" style={{ marginBottom: 16 }}>
         <HandCoins size={18} aria-hidden="true" />
         <span>
-          Payment amount: <strong>{ctx ? formatCurrency(ctx.suggestedAmount) : '…'}</strong>
+          Payment amount: <strong>{ctx ? formatCurrency(ctx.defaultAmount) : '…'}</strong>
           {ctx && (ctx.amountEditable ? ' (can be changed per payment)' : ' (fixed)')}
+          {ctx && ctx.wardAmounts.length > 0 && (
+            <> · Ward amounts: {ctx.wardAmounts.map((w) => `${wardLabel(w.wardId)} ${formatCurrency(w.amount)}`).join(', ')}</>
+          )}
         </span>
       </div>
 

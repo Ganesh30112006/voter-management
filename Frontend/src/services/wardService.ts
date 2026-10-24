@@ -31,6 +31,9 @@ export const wardService = {
   updateBooth(id: string, input: Omit<BoothInput, 'wardId'>): Promise<Booth> {
     return apiClient.put<Booth>(`/booths/${encodeURIComponent(id)}`, input).then((r) => r.data);
   },
+  setWardAmount(wardId: string, amount: number | null): Promise<void> {
+    return apiClient.put(`/wards/${encodeURIComponent(wardId)}/payment-amount`, { amount }).then(() => undefined);
+  },
   setWardAdmins(wardId: string, adminIds: string[]): Promise<void> {
     return apiClient.put(`/wards/${encodeURIComponent(wardId)}/admins`, { adminIds }).then(() => undefined);
   },

@@ -10,7 +10,8 @@ import { useConfirm } from '../../hooks/useConfirm';
 import { adminService } from '../../services/adminService';
 import { ApiError, errorMessage } from '../../services/apiError';
 import { wardService } from '../../services/wardService';
-import type { Admin, Booth, Ward } from '../../types';
+import type { Admin, Booth, Ward, WardSummary } from '../../types';
+import { formatCurrency } from '../../utils/format';
 import { boothSchema, wardSchema, type BoothFormValues, type WardFormValues } from '../../utils/validation';
 
 function ServerError({ message }: { message: string | null }) {
@@ -72,6 +73,51 @@ export function WardFormModal({ ward, onClose, onSaved }: { ward?: Ward; onClose
         </FormField>
         <FormField label="Ward name" error={errors.name?.message} required>
           <input className="input" {...register('name')} />
+        </FormField>
+      </form>
+    </Modal>
+  );
+}
+
+/** A ward's own payment amount for every voter in it; empty uses the overall amount from Settings. */
+export function WardAmountModal({ ward, defaultAmount, onClose, onSaved }: { ward: WardSummary; defaultAmount: number | null; onClose: () => void; onSaved: () => void }) {
+  const [value, setValue] = useState(ward.paymentAmount !== null ? String(ward.paymentAmount) : '');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const save = async (amount: number | null) => {
+    setError(null);
+    setBusy(true);
+    try {
+      await wardService.setWardAmount(ward.id, amount);
+      onSaved();
+    } catch (e) {
+      setError(errorMessage(e));
+      setBusy(false);
+    }
+  };
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = value.trim();
+    if (!text) return save(null);
+    const n = Number(text);
+    if (!Number.isInteger(n) || n < 1 || n > 100000) {
+      setError('Enter a whole amount between ₹1 and ₹1,00,000, or leave it empty.');
+      return;
+    }
+    return save(n);
+  };
+
+  return (
+    <Modal title={`Payment amount for Ward ${ward.number}`} size="sm" onClose={onClose} locked={busy} footer={<SaveFooter formId="ward-amount-form" onClose={onClose} busy={busy} label="Save amount" />}>
+      <form id="ward-amount-form" className="stack" noValidate onSubmit={onSubmit}>
+        <ServerError message={error} />
+        <FormField
+          label="Amount for each voter (₹)"
+          hint={`Leave empty to use the overall amount${defaultAmount !== null ? ` (${formatCurrency(defaultAmount)})` : ''}. Applies to new payments only.`}
+        >
+          <input className="input" type="number" inputMode="numeric" min={1} max={100000} value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </FormField>
       </form>
     </Modal>

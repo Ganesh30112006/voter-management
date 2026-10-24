@@ -1,4 +1,4 @@
-import { CheckCircle2, FileSpreadsheet, IndianRupee, Receipt, Users, XCircle } from 'lucide-react';
+import { CheckCircle2, FileSpreadsheet, IndianRupee, Receipt, UserCheck, Users, XCircle } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ChartCard, CHART, SimpleBarChart, StatusDonut, TrendLineChart } from '../../components/charts/Charts';
 import { PageHeader } from '../../components/common/PageHeader';
@@ -43,9 +43,68 @@ function sheetsFor(d: ReportData) {
       headers: ['Admin ID', 'Admin name', 'Transactions', 'Unique voters', 'Amount (INR)'],
       rows: d.byAdmin.map((a) => [a.adminId, a.adminName, a.transactions, a.uniqueVoters, a.amount] as Cell[]),
     },
+    ...(d.byBlo.length
+      ? [
+          {
+            name: 'By BLO',
+            headers: ['BLO ID', 'BLO name', 'Corporator', 'Transactions', 'Unique voters', 'Amount (INR)'],
+            rows: [
+              ...d.byBlo.map((b) => [b.adminId, b.adminName, b.corporatorId, b.transactions, b.uniqueVoters, b.amount] as Cell[]),
+              ['All BLOs', '', '', bloTotal(d).transactions, bloTotal(d).uniqueVoters, bloTotal(d).amount] as Cell[],
+            ],
+          },
+        ]
+      : []),
     { name: 'Daily', headers: ['Date', 'Transactions', 'Unique voters', 'Amount (INR)'], rows: d.daily.map((r) => [r.date, r.transactions, r.uniqueVoters, r.amount] as Cell[]) },
     { name: 'Monthly', headers: ['Month', 'Transactions', 'Unique voters', 'Amount (INR)'], rows: d.monthly.map((r) => [r.month, r.transactions, r.uniqueVoters, r.amount] as Cell[]) },
   ];
+}
+
+function bloTotal(d: ReportData) {
+  return d.byBlo.reduce((t, b) => ({ transactions: t.transactions + b.transactions, uniqueVoters: t.uniqueVoters + b.uniqueVoters, amount: t.amount + b.amount }), { transactions: 0, uniqueVoters: 0, amount: 0 });
+}
+
+/** Every BLO in the caller's reach (all for the Super Admin, its own for a Corporator) with a combined total. */
+function BloTable({ data, showCorporator }: { data: ReportData; showCorporator: boolean }) {
+  if (!data.byBlo.length) return <p className="muted small" style={{ padding: 16 }}>No BLOs.</p>;
+  const total = bloTotal(data);
+  return (
+    <div className="table-wrap report-scroll">
+      <table className="table report-table">
+        <caption className="sr-only">Amount given by each BLO</caption>
+        <thead>
+          <tr>
+            <th scope="col">BLO</th>
+            {showCorporator && <th scope="col">Corporator</th>}
+            <th scope="col" className="text-right">Transactions</th>
+            <th scope="col" className="text-right">Unique voters</th>
+            <th scope="col" className="text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.byBlo.map((b) => (
+            <tr key={b.adminId}>
+              <td data-label="BLO">
+                {b.adminId} · {b.adminName}
+                {b.status === 'Inactive' && <span className="muted small"> (inactive)</span>}
+              </td>
+              {showCorporator && <td data-label="Corporator">{b.corporatorId}</td>}
+              <td data-label="Transactions" className="text-right mono">{formatNumber(b.transactions)}</td>
+              <td data-label="Unique voters" className="text-right mono">{formatNumber(b.uniqueVoters)}</td>
+              <td data-label="Amount" className="text-right mono">{formatCurrency(b.amount)}</td>
+            </tr>
+          ))}
+          <tr className="report-total">
+            <td data-label="BLO">All BLOs ({formatNumber(data.byBlo.length)})</td>
+            {showCorporator && <td data-label="Corporator" />}
+            <td data-label="Transactions" className="text-right mono">{formatNumber(total.transactions)}</td>
+            <td data-label="Unique voters" className="text-right mono">{formatNumber(total.uniqueVoters)}</td>
+            <td data-label="Amount" className="text-right mono">{formatCurrency(total.amount)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function GroupTable({ rows, caption }: { rows: GroupRow[]; caption: string }) {
@@ -209,6 +268,16 @@ export function ReportsPage() {
             <StatCard label="Voters not received" hint="Unique voters" value={formatNumber(s?.votersNotReceived ?? 0)} icon={XCircle} tone="gray" loading={busy} />
             <StatCard label="Successful transactions" value={formatNumber(s?.transactions ?? 0)} icon={Receipt} loading={busy} />
             <StatCard label="Amount distributed" value={formatCurrency(s?.amount ?? 0)} icon={IndianRupee} tone="green" loading={busy} />
+            {admin.role !== 'BLO' && (
+              <StatCard
+                label={superAdmin ? 'Given by all BLOs' : 'Given by my BLOs'}
+                value={formatCurrency(data ? bloTotal(data).amount : 0)}
+                hint={data ? `${formatNumber(bloTotal(data).transactions)} payments · ${formatNumber(data.byBlo.length)} BLOs` : undefined}
+                icon={UserCheck}
+                tone="green"
+                loading={busy}
+              />
+            )}
           </StatGrid>
 
           {data && (
@@ -245,6 +314,14 @@ export function ReportsPage() {
                 </ChartCard>
               </div>
 
+              {admin.role !== 'BLO' && (
+                <section className="card">
+                  <div className="card-header">
+                    <h2>{superAdmin ? 'Amount given by each BLO' : 'Amount given by my BLOs'}</h2>
+                  </div>
+                  <BloTable data={data} showCorporator={superAdmin} />
+                </section>
+              )}
               <section className="card">
                 <div className="card-header">
                   <h2>By ward</h2>

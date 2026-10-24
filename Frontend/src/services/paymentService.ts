@@ -10,8 +10,8 @@ import type {
 import { apiClient } from './apiClient';
 
 export const paymentService = {
-  context(): Promise<PaymentContext> {
-    return apiClient.get<PaymentContext>('/payments/context').then((r) => r.data);
+  context(wardId?: string): Promise<PaymentContext> {
+    return apiClient.get<PaymentContext>('/payments/context', { params: wardId ? { wardId } : undefined }).then((r) => r.data);
   },
   /** The server assigns the transaction ID and timestamp and records the logged-in admin. */
   record(input: PaymentInput): Promise<PaymentTransaction> {
