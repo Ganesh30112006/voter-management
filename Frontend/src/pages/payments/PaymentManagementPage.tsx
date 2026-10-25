@@ -27,6 +27,15 @@ export function PaymentManagementPage() {
         </span>
       </div>
 
+      {ctx && ctx.cashLeft !== null && (
+        <div className={`alert ${ctx.cashLeft > 0 ? 'alert-info' : 'alert-warning'}`} style={{ marginBottom: 16 }}>
+          <HandCoins size={18} aria-hidden="true" />
+          <span>
+            Money left with you: <strong>{formatCurrency(ctx.cashLeft)}</strong> (given by your Corporator, minus the payments you made)
+          </span>
+        </div>
+      )}
+
       {admin.role !== 'SUPER_ADMIN' && (
         <p className="small muted" style={{ marginBottom: 16 }}>
           {admin.role === 'BLO' ? 'Showing voters in your assigned booths.' : 'Showing voters in your wards.'}

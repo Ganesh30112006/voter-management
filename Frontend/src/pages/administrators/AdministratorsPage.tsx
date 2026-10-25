@@ -17,6 +17,7 @@ import { errorMessage } from '../../services/apiError';
 import type { AccountStatus, Admin, AdminQuery, ManagedRole } from '../../types';
 import { formatCurrency, formatDate, formatNumber } from '../../utils/format';
 import { isSuperAdmin, ROLE_LABELS } from '../../utils/permissions';
+import { BloCashPanel } from '../../components/payments/BloCashPanel';
 import { AdminFormModal } from './AdminFormModal';
 import { SetPasswordModal } from './SetPasswordModal';
 
@@ -360,12 +361,13 @@ export function AdministratorsPage() {
                 <dd>{detail.boothIds.length ? detail.boothIds.map(boothLabel).join(', ') : detail.wardIds.length ? 'All booths in assigned wards' : '—'}</dd>
               </div>
             )}
-            {detail.role !== 'SUPER_ADMIN' && <PaymentTotals adminId={detail.id} />}
+            {detail.role === 'CORPORATOR' && <PaymentTotals adminId={detail.id} />}
             <div>
               <dt>Created</dt>
               <dd>{formatDate(detail.createdAt)}</dd>
             </div>
           </dl>
+          {detail.role === 'BLO' && <BloCashPanel bloId={detail.id} canEdit={detail.corporatorId === actor.id} />}
         </Modal>
       )}
     </>

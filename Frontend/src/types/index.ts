@@ -280,6 +280,16 @@ export interface PaymentContext {
   defaultAmount: number;
   /** Wards in the caller's area that have their own amount. */
   wardAmounts: { wardId: string; amount: number }[];
+  /** BLO only: cash left from what its Corporator gave it (null for other roles). */
+  cashLeft: number | null;
+}
+
+/** Cash a Corporator gave a BLO, what the BLO paid out and what it has left. */
+export interface BloCash {
+  given: number;
+  spent: number;
+  left: number;
+  history: { id: string; amount: number; note: string; givenBy: string; givenAt: string }[];
 }
 
 export interface VoterDetail {
@@ -355,7 +365,18 @@ export interface ReportData {
   byBooth: GroupRow[];
   byAdmin: { adminId: string; adminName: string; transactions: number; amount: number; uniqueVoters: number }[];
   /** Money given out by each BLO (Super Admin: every BLO; Corporator: its own BLOs; BLO: empty). */
-  byBlo: { adminId: string; adminName: string; corporatorId: string; status: AccountStatus; transactions: number; amount: number; uniqueVoters: number }[];
+  byBlo: {
+    adminId: string;
+    adminName: string;
+    corporatorId: string;
+    status: AccountStatus;
+    transactions: number;
+    amount: number;
+    uniqueVoters: number;
+    /** All-time cash given by the Corporator and what is left. */
+    cashGiven: number;
+    cashLeft: number;
+  }[];
   daily: { date: string; transactions: number; uniqueVoters: number; amount: number }[];
   monthly: { month: string; transactions: number; uniqueVoters: number; amount: number }[];
 }

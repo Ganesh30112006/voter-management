@@ -44,6 +44,7 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
     setValue,
     setError,
     getValues,
+    watch,
     formState: { errors },
   } = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
@@ -247,6 +248,15 @@ export function RecordPaymentModal({ voter, onClose, onRecorded }: Props) {
               >
                 <input className="input" type="number" inputMode="numeric" min={1} step={1} readOnly={!ctx?.amountEditable} {...register('amount')} />
               </FormField>
+              {ctx && ctx.cashLeft !== null && (
+                <div className={`alert ${ctx.cashLeft >= Number(watch('amount') || 0) ? 'alert-info' : 'alert-warning'}`}>
+                  <AlertTriangle size={18} aria-hidden="true" />
+                  <span>
+                    Money left with you: <strong>{formatCurrency(ctx.cashLeft)}</strong>
+                    {ctx.cashLeft < Number(watch('amount') || 0) && ' (less than this payment, ask your Corporator for more)'}
+                  </span>
+                </div>
+              )}
 
               <div className="row" style={{ justifyContent: 'space-between' }}>
                 <span className="small muted">Who is receiving the payment?</span>

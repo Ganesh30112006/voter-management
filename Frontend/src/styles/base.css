@@ -80,6 +80,21 @@ textarea {
 .small {
   font-size: 0.8125rem;
 }
+.text-danger {
+  color: var(--color-danger);
+}
+.text-success {
+  color: var(--color-success);
+}
+.cash-panel {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+}
+.cash-title {
+  margin: 0 0 12px;
+  font-size: 1rem;
+}
 .mono {
   font-variant-numeric: tabular-nums;
 }

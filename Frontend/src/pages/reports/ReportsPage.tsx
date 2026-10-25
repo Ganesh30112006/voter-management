@@ -47,10 +47,10 @@ function sheetsFor(d: ReportData) {
       ? [
           {
             name: 'By BLO',
-            headers: ['BLO ID', 'BLO name', 'Corporator', 'Transactions', 'Unique voters', 'Amount (INR)'],
+            headers: ['BLO ID', 'BLO name', 'Corporator', 'Transactions', 'Unique voters', 'Amount (INR)', 'Cash given (INR)', 'Cash left (INR)'],
             rows: [
-              ...d.byBlo.map((b) => [b.adminId, b.adminName, b.corporatorId, b.transactions, b.uniqueVoters, b.amount] as Cell[]),
-              ['All BLOs', '', '', bloTotal(d).transactions, bloTotal(d).uniqueVoters, bloTotal(d).amount] as Cell[],
+              ...d.byBlo.map((b) => [b.adminId, b.adminName, b.corporatorId, b.transactions, b.uniqueVoters, b.amount, b.cashGiven, b.cashLeft] as Cell[]),
+              ['All BLOs', '', '', bloTotal(d).transactions, bloTotal(d).uniqueVoters, bloTotal(d).amount, bloTotal(d).cashGiven, bloTotal(d).cashLeft] as Cell[],
             ],
           },
         ]
@@ -61,7 +61,10 @@ function sheetsFor(d: ReportData) {
 }
 
 function bloTotal(d: ReportData) {
-  return d.byBlo.reduce((t, b) => ({ transactions: t.transactions + b.transactions, uniqueVoters: t.uniqueVoters + b.uniqueVoters, amount: t.amount + b.amount }), { transactions: 0, uniqueVoters: 0, amount: 0 });
+  return d.byBlo.reduce(
+    (t, b) => ({ transactions: t.transactions + b.transactions, uniqueVoters: t.uniqueVoters + b.uniqueVoters, amount: t.amount + b.amount, cashGiven: t.cashGiven + b.cashGiven, cashLeft: t.cashLeft + b.cashLeft }),
+    { transactions: 0, uniqueVoters: 0, amount: 0, cashGiven: 0, cashLeft: 0 },
+  );
 }
 
 /** Every BLO in the caller's reach (all for the Super Admin, its own for a Corporator) with a combined total. */
@@ -79,6 +82,8 @@ function BloTable({ data, showCorporator }: { data: ReportData; showCorporator: 
             <th scope="col" className="text-right">Transactions</th>
             <th scope="col" className="text-right">Unique voters</th>
             <th scope="col" className="text-right">Amount</th>
+            <th scope="col" className="text-right">Cash given</th>
+            <th scope="col" className="text-right">Cash left</th>
           </tr>
         </thead>
         <tbody>
@@ -92,6 +97,8 @@ function BloTable({ data, showCorporator }: { data: ReportData; showCorporator: 
               <td data-label="Transactions" className="text-right mono">{formatNumber(b.transactions)}</td>
               <td data-label="Unique voters" className="text-right mono">{formatNumber(b.uniqueVoters)}</td>
               <td data-label="Amount" className="text-right mono">{formatCurrency(b.amount)}</td>
+              <td data-label="Cash given" className="text-right mono">{formatCurrency(b.cashGiven)}</td>
+              <td data-label="Cash left" className={`text-right mono ${b.cashLeft < 0 ? 'text-danger' : ''}`}>{formatCurrency(b.cashLeft)}</td>
             </tr>
           ))}
           <tr className="report-total">
@@ -100,6 +107,8 @@ function BloTable({ data, showCorporator }: { data: ReportData; showCorporator: 
             <td data-label="Transactions" className="text-right mono">{formatNumber(total.transactions)}</td>
             <td data-label="Unique voters" className="text-right mono">{formatNumber(total.uniqueVoters)}</td>
             <td data-label="Amount" className="text-right mono">{formatCurrency(total.amount)}</td>
+            <td data-label="Cash given" className="text-right mono">{formatCurrency(total.cashGiven)}</td>
+            <td data-label="Cash left" className="text-right mono">{formatCurrency(total.cashLeft)}</td>
           </tr>
         </tbody>
       </table>
