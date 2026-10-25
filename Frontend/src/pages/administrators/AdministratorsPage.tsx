@@ -15,7 +15,7 @@ import { useWards } from '../../hooks/useWards';
 import { adminService } from '../../services/adminService';
 import { errorMessage } from '../../services/apiError';
 import type { AccountStatus, Admin, AdminQuery, ManagedRole } from '../../types';
-import { formatDate } from '../../utils/format';
+import { formatCurrency, formatDate, formatNumber } from '../../utils/format';
 import { isSuperAdmin, ROLE_LABELS } from '../../utils/permissions';
 import { AdminFormModal } from './AdminFormModal';
 import { SetPasswordModal } from './SetPasswordModal';
@@ -360,6 +360,7 @@ export function AdministratorsPage() {
                 <dd>{detail.boothIds.length ? detail.boothIds.map(boothLabel).join(', ') : detail.wardIds.length ? 'All booths in assigned wards' : '—'}</dd>
               </div>
             )}
+            {detail.role !== 'SUPER_ADMIN' && <PaymentTotals adminId={detail.id} />}
             <div>
               <dt>Created</dt>
               <dd>{formatDate(detail.createdAt)}</dd>
@@ -368,5 +369,16 @@ export function AdministratorsPage() {
         </Modal>
       )}
     </>
+  );
+}
+
+/** Total money the account has given out (successful payments). */
+function PaymentTotals({ adminId }: { adminId: string }) {
+  const { data, error } = useQuery(() => adminService.paymentTotals(adminId), `totals-${adminId}`);
+  return (
+    <div>
+      <dt>Total distributed</dt>
+      <dd>{data ? `${formatCurrency(data.amount)} · ${formatNumber(data.transactions)} payments` : error ? '—' : '…'}</dd>
+    </div>
   );
 }

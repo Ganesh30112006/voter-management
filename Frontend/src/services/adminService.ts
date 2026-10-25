@@ -10,6 +10,10 @@ export const adminService = {
   options(): Promise<AdminOption[]> {
     return apiClient.get<AdminOption[]>('/admins/options').then((r) => r.data);
   },
+  /** Successful payments the account has recorded (money it gave out). */
+  paymentTotals(id: string): Promise<{ transactions: number; amount: number }> {
+    return apiClient.get<{ transactions: number; amount: number }>(`/admins/${encodeURIComponent(id)}/payment-totals`).then((r) => r.data);
+  },
   get(id: string): Promise<Admin> {
     return apiClient.get<Admin>(`/admins/${encodeURIComponent(id)}`).then((r) => r.data);
   },
