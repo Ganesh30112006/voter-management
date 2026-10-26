@@ -25,6 +25,10 @@ export const voterService = {
   create(input: VoterInput): Promise<Voter> {
     return apiClient.post<Voter>('/voters', input).then((r) => r.data);
   },
+  /** Super Admin: any voter; Corporator: voters in its own wards. Refused once the voter has been paid. */
+  remove(recordId: string): Promise<void> {
+    return apiClient.delete(`/voters/${encodeURIComponent(recordId)}`).then(() => undefined);
+  },
   update(recordId: string, input: VoterInput): Promise<Voter> {
     return apiClient.put<Voter>(`/voters/${encodeURIComponent(recordId)}`, input).then((r) => r.data);
   },

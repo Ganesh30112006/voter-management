@@ -1,4 +1,8 @@
-import { Pencil, UserPlus } from 'lucide-react';
+import { Pencil, Trash2, UserPlus } from 'lucide-react';
+import { useState } from 'react';
+import { useConfirm } from '../../hooks/useConfirm';
+import { useToast } from '../../hooks/useToast';
+import { errorMessage } from '../../services/apiError';
 import { useAuth } from '../../hooks/useAuth';
 import { useQuery } from '../../hooks/useQuery';
 import { useWards } from '../../hooks/useWards';
@@ -23,14 +27,41 @@ interface Props {
   onAddHouseholdMember: (voter: Voter) => void;
   /** Called after a BLO asks for permission to pay a Shifted voter. */
   onChanged?: () => void;
+  /** Called after the voter was removed (Super Admin / the ward's Corporator). */
+  onRemoved?: () => void;
 }
 
-export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewTransaction, onEdit, onAddHouseholdMember, onChanged }: Props) {
+export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewTransaction, onEdit, onAddHouseholdMember, onChanged, onRemoved }: Props) {
+  const confirm = useConfirm();
+  const toast = useToast();
+  const [removing, setRemoving] = useState(false);
   const { admin } = useAuth();
   const { wardLabel, boothLabel } = useWards();
   const { data, error, reload } = useQuery(() => voterService.get(recordId), `${recordId}:${refreshKey}`);
   const v = data?.voter;
   const canEdit = canManageWardData(admin);
+
+  const remove = async () => {
+    if (!v) return;
+    const ok = await confirm({
+      title: `Remove ${v.fullName}?`,
+      message: `Voter ID ${v.voterId} will be removed from the voter list. This cannot be undone.`,
+      confirmLabel: 'Remove voter',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setRemoving(true);
+    try {
+      await voterService.remove(v.recordId);
+      toast.success(`${v.fullName} removed.`);
+      onRemoved?.();
+      onClose();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setRemoving(false);
+    }
+  };
 
   const footer = v && (
     <>
@@ -42,6 +73,11 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
           <button type="button" className="btn btn-secondary" onClick={() => onEdit(v)}>
             <Pencil size={16} aria-hidden="true" /> Edit
           </button>
+          {v.paymentStatus !== 'Received' && (
+            <button type="button" className="btn btn-danger" onClick={remove} disabled={removing}>
+              <Trash2 size={16} aria-hidden="true" /> Remove
+            </button>
+          )}
         </>
       )}
       <PaymentAction voter={v} onPay={onPay} onViewReceipt={onViewTransaction} onChanged={onChanged} />

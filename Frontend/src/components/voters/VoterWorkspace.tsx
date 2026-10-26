@@ -27,6 +27,8 @@ interface Props {
   initialPaymentStatus?: PaymentStatus | '';
   /** Shows the "Add voter" and export actions (Super Admin, and Corporators in their wards). */
   manage?: boolean;
+  /** Called after voters were added, removed or changed (e.g. to refresh counts). */
+  onDataChanged?: () => void;
 }
 
 function householdTemplate(v: Voter): VoterFormState {
@@ -36,7 +38,7 @@ function householdTemplate(v: Voter): VoterFormState {
   };
 }
 
-export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initialPaymentStatus = '', manage = false }: Props) {
+export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initialPaymentStatus = '', manage = false, onDataChanged }: Props) {
   const admin = useCurrentAdmin();
   const toast = useToast();
   const { wards, booths, wardLabel, boothLabel } = useWards();
@@ -83,7 +85,10 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
     setPage(1);
   };
 
-  const refreshAll = () => setRefreshKey((k) => k + 1);
+  const refreshAll = () => {
+    setRefreshKey((k) => k + 1);
+    onDataChanged?.();
+  };
 
   const columns = useMemo<Column<VoterListItem>[]>(
     () => [
@@ -277,6 +282,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
           onPay={setPayFor}
           onViewTransaction={setTxId}
           onChanged={refreshAll}
+          onRemoved={refreshAll}
           onEdit={(v) => setForm({ mode: 'edit', recordId: v.recordId, initial: v })}
           onAddHouseholdMember={(v) => {
             setDetailId(null);
