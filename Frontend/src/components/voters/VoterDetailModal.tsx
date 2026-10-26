@@ -21,9 +21,11 @@ interface Props {
   onViewTransaction: (id: string) => void;
   onEdit: (voter: Voter) => void;
   onAddHouseholdMember: (voter: Voter) => void;
+  /** Called after a BLO asks for permission to pay a Shifted voter. */
+  onChanged?: () => void;
 }
 
-export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewTransaction, onEdit, onAddHouseholdMember }: Props) {
+export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewTransaction, onEdit, onAddHouseholdMember, onChanged }: Props) {
   const { admin } = useAuth();
   const { wardLabel, boothLabel } = useWards();
   const { data, error, reload } = useQuery(() => voterService.get(recordId), `${recordId}:${refreshKey}`);
@@ -42,7 +44,7 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
           </button>
         </>
       )}
-      <PaymentAction voter={v} onPay={onPay} onViewReceipt={onViewTransaction} />
+      <PaymentAction voter={v} onPay={onPay} onViewReceipt={onViewTransaction} onChanged={onChanged} />
     </>
   );
 

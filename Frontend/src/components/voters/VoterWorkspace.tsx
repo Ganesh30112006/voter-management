@@ -125,7 +125,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
         hideLabelOnMobile: true,
         render: (v) => (
           <div className="row" style={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
-            <PaymentAction voter={v} onPay={setPayFor} onViewReceipt={setTxId} />
+            <PaymentAction voter={v} onPay={setPayFor} onViewReceipt={setTxId} onChanged={refreshAll} />
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDetailId(v.recordId)} aria-label={`View details for ${v.fullName}`} title="View details">
               <Eye size={16} aria-hidden="true" />
             </button>
@@ -276,6 +276,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
           onClose={() => setDetailId(null)}
           onPay={setPayFor}
           onViewTransaction={setTxId}
+          onChanged={refreshAll}
           onEdit={(v) => setForm({ mode: 'edit', recordId: v.recordId, initial: v })}
           onAddHouseholdMember={(v) => {
             setDetailId(null);

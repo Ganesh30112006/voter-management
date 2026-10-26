@@ -125,6 +125,24 @@ export interface VoterListItem extends Voter {
   latestPayment: PaymentTransaction | null;
   /** Whether the logged-in admin may record a payment for this voter (server decided). */
   canRecordPayment: boolean;
+  /** Shifted voters: a BLO needs its Corporator's permission to pay (null = never asked). */
+  shiftedApproval: ShiftedApprovalStatus | null;
+}
+
+export type ShiftedApprovalStatus = 'Pending' | 'Approved' | 'Rejected';
+
+/** A request to pay a Shifted voter (who decided is never shown). */
+export interface ShiftedApprovalRequest {
+  recordId: string;
+  voterId: string;
+  fullName: string;
+  wardId: string;
+  boothId: string;
+  houseNumber: string;
+  status: ShiftedApprovalStatus;
+  requestedBy: string;
+  requestedAt: string | null;
+  decidedAt: string | null;
 }
 
 export interface VoterQuery {

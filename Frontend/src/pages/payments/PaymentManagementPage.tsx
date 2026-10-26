@@ -1,5 +1,7 @@
 import { HandCoins } from 'lucide-react';
+import { useState } from 'react';
 import { PageHeader } from '../../components/common/PageHeader';
+import { ShiftedApprovalsCard } from '../../components/payments/ShiftedApprovalsCard';
 import { VoterWorkspace } from '../../components/voters/VoterWorkspace';
 import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useQuery } from '../../hooks/useQuery';
@@ -10,6 +12,7 @@ import { formatCurrency } from '../../utils/format';
 export function PaymentManagementPage() {
   const admin = useCurrentAdmin();
   const { wardLabel } = useWards();
+  const [listKey, setListKey] = useState(0);
   const { data: ctx } = useQuery(() => paymentService.context(), 'payment-context');
 
   return (
@@ -42,8 +45,10 @@ export function PaymentManagementPage() {
         </p>
       )}
 
+      {admin.role !== 'BLO' && <ShiftedApprovalsCard onChanged={() => setListKey((k) => k + 1)} />}
+
       {/* No default payment filter: a voter must stay visible after paying so the tick shows. */}
-      <VoterWorkspace />
+      <VoterWorkspace key={listKey} />
     </>
   );
 }
