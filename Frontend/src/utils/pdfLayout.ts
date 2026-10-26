@@ -1,4 +1,5 @@
 import { autoDetectMapping, IMPORT_FIELDS } from './importParser';
+import { normalizeGender } from './validation';
 
 /** One run of text on a PDF page. x/y are in points from the page's top-left; y is the text baseline. */
 export interface PdfTextItem {
@@ -46,7 +47,12 @@ interface Cell {
   x1: number;
 }
 
-const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+/**
+ * Some roll fonts have Telugu letters (conjuncts such as స్త్రీ, స్సు) with no text mapping: pdf.js gives a NUL
+ * (or U+FFFD) for them. Those characters are dropped from the values; the database refuses NUL.
+ */
+const UNREADABLE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\ufffd]/g;
+const clean = (s: string) => s.replace(UNREADABLE, '').replace(/\s+/g, ' ').trim();
 
 /** Groups a page's items into lines (top to bottom), each sorted left to right. */
 export function groupLines(items: PdfTextItem[]): Line[] {
@@ -150,11 +156,13 @@ class TableReader {
   }
 }
 
-const EPIC = /\b([A-Z]{3}\d{7}|[A-Z]{2}\/\d{2}\/\d{2,3}\/\d{5,7})\b/;
+// The digits may come out split ("NDX270831 1"), so a single space between them is allowed and removed.
+const EPIC = /\b([A-Z]{3}(?: ?\d){7}(?!\d)|[A-Z]{2}\/\d{2}\/\d{2,3}\/\d{5,7}\b)/;
+const epicValue = (m: string) => m.replace(/ /g, '');
 
 /** EPIC (voter ID card) numbers in a text, e.g. NDX3549268 or AP/12/123/456789. */
 export function voterIdsInText(text: string): string[] {
-  return [...text.matchAll(new RegExp(EPIC.source, 'g'))].map((m) => m[1]);
+  return [...text.matchAll(new RegExp(EPIC.source, 'g'))].map((m) => epicValue(m[1]));
 }
 
 /** A page's text, line by line (pieces of one line joined as they appear). */
@@ -176,8 +184,22 @@ function isNameLabel(text: string): boolean {
 /** House / door number label: English "House Number" / "House No." or Telugu "ఇంటి సంఖ్య" (also extracted as "ఇంటి సంఖ"). */
 const isHouseLabel = (text: string) => /^house(number|no)/.test(compact(text)) || compact(text).startsWith('ఇంటిసంఖ');
 
-const AGE = /(?:\bage|వయస్సు|వయసు)\s*:?\s*(\d{1,3})/i;
-const GENDER = /(?:\bgender|\bsex|లింగము|లింగం)\s*:?\s*([^\s:]+)/i;
+// Telugu labels may come out split by spaces or with unreadable letters ("వయ సు\0", "లి ం గము").
+const AGE = /(?:\bage|వయ[^:\d\n]{0,8})\s*:?\s*(\d{1,3})/i;
+const GENDER = /(\bgender|\bsex|లి\s*ం\s*గ\s*(?:ము|ం))\s*:?\s*([^\s:]*)/i;
+
+/**
+ * Gender value from a box (the word after the label, which may sit on the next line). In Telugu rolls whose
+ * font cannot map స్త్రీ, no gender word follows "లింగము :" (unreadable letters are dropped), while male (పు)
+ * reads fine; such a box is taken as Female.
+ */
+function genderValue(boxText: string): string {
+  const m = boxText.match(GENDER);
+  if (!m) return '';
+  const value = clean(m[2]);
+  if (value && normalizeGender(value)) return value;
+  return /^[a-z]/i.test(m[1]) ? '' : 'స్త్రీ';
+}
 
 /** The value after a label: the text after the first ":" (or after the label words when there is none). */
 function labelValue(text: string, label: RegExp): string {
@@ -253,11 +275,11 @@ class RollReader {
         const boxText = texts.join('\n').normalize('NFC').replace(/[\u200b-\u200d]/g, '');
         onPage.push({
           record: {
-            voterId: epic[1],
+            voterId: epicValue(epic[1]),
             fullName: nameLine ? labelValue(nameLine, /^\s*(elector'?s\s+)?name/i) : '',
             houseNumber: houseLine ? labelValue(houseLine, /^\s*house\s*(number|no\.?)/i).split(/\s+(?:age|gender|photo)\b/i)[0] : '',
             age: boxText.match(AGE)?.[1] ?? '',
-            gender: boxText.match(GENDER)?.[1] ?? '',
+            gender: genderValue(boxText),
           },
           column: c,
           y: box[0].y,

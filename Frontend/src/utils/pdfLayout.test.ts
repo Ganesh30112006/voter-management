@@ -2,7 +2,7 @@ import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
 import { describe, expect, it } from 'vitest';
 import { readPdfLayoutFromFile, readPdfVoterIdsFromFile, type PdfJsLike } from '../services/pdfReader';
 import { autoDetectMapping, extractRows, findHeaderRow, mappingErrors, validateRows } from './importParser';
-import { pageRanges, readPdfLayout, rollRows, type PdfTextItem } from './pdfLayout';
+import { pageRanges, readPdfLayout, rollRows, voterIdsInText, type PdfTextItem } from './pdfLayout';
 
 /** Text placed at (x, top) in points, top measured from the page's top edge; `rotated` draws it at 45°. */
 type Text = [x: number, top: number, text: string, size?: number, rotated?: boolean];
@@ -278,5 +278,11 @@ describe('heading row', () => {
   it('finds headings below title rows', () => {
     expect(findHeaderRow([['Voter list'], ['Ward 3', ''], ['Voter ID', 'Name', 'Ward', 'Booth'], ['V1', 'A', '3', '31']])).toBe(2);
     expect(findHeaderRow([['V1', 'A'], ['V2', 'B']])).toBe(0);
+  });
+});
+
+describe('rolls with unreadable letters and photos', () => {
+  it('reads EPIC numbers whose digits come out split', () => {
+    expect(voterIdsInText('ఓటరు ఐడి : NDX270831 1\nNDX3678273 and AP/12/123/456789')).toEqual(['NDX2708311', 'NDX3678273', 'AP/12/123/456789']);
   });
 });
