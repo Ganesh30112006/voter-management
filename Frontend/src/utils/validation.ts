@@ -84,7 +84,7 @@ export const voterSchema = z.object({
   wardId: z.string().min(1, 'Select a ward'),
   // Optional: ward rolls have no booth.
   boothId: z.string(),
-  houseNumber: z.string().trim().min(1, 'House / door number is required').max(30),
+  houseNumber: z.string().trim().min(1, 'House / door number is required').max(100, 'Use at most 100 characters'),
   householdId: z
     .string()
     .trim()
