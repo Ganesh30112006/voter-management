@@ -27,6 +27,10 @@ export const adminService = {
   setStatus(id: string, status: AccountStatus): Promise<Admin> {
     return apiClient.patch<Admin>(`/admins/${encodeURIComponent(id)}/status`, { status }).then((r) => r.data);
   },
+  /** Super Admin only. Deleting a Corporator also deletes its BLOs; returns the deleted IDs. */
+  remove(id: string): Promise<string[]> {
+    return apiClient.delete<{ deleted: string[] }>(`/admins/${encodeURIComponent(id)}`).then((r) => r.data.deleted);
+  },
   setPassword(id: string, password: string): Promise<void> {
     return apiClient.put(`/admins/${encodeURIComponent(id)}/password`, { password }).then(() => undefined);
   },

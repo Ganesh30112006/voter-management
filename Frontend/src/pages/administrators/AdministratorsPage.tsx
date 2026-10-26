@@ -1,4 +1,4 @@
-import { CheckCircle2, Eye, KeyRound, Pencil, Plus, Power } from 'lucide-react';
+import { CheckCircle2, Eye, KeyRound, Pencil, Plus, Power, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { AccountStatusBadge } from '../../components/common/Badges';
 import { Modal } from '../../components/common/Modal';
@@ -69,6 +69,40 @@ export function AdministratorsPage() {
       const updated = await adminService.setStatus(a.id, next);
       toast.success(`${updated.id} is now ${updated.status}.`);
       if (detail?.id === a.id) setDetail(updated);
+      refresh();
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
+  /** Super Admin only: a Corporator goes together with its BLOs; past payments are kept. */
+  const deleteAccount = async (a: Admin) => {
+    let blos = 0;
+    if (a.role === 'CORPORATOR') {
+      try {
+        blos = (await adminService.list({ role: 'BLO', corporatorId: a.id, page: 1, pageSize: 1 })).total;
+      } catch (e) {
+        toast.error(errorMessage(e));
+        return;
+      }
+    }
+    const ok = await confirm({
+      title: `Delete ${a.id}?`,
+      message: [
+        `${a.fullName} will be removed and can never sign in again.`,
+        blos ? `Its ${blos} BLO${blos > 1 ? 's' : ''} will be deleted too.` : '',
+        'Payments already recorded stay in Payment History and Reports. This cannot be undone.',
+      ]
+        .filter(Boolean)
+        .join(' '),
+      confirmLabel: 'Delete account',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    try {
+      const deleted = await adminService.remove(a.id);
+      toast.success(deleted.length > 1 ? `Deleted ${a.id} and ${deleted.length - 1} BLO${deleted.length > 2 ? 's' : ''}.` : `Deleted ${a.id}.`);
+      setDetail(null);
       refresh();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -304,6 +338,11 @@ export function AdministratorsPage() {
           onClose={() => setDetail(null)}
           footer={
             <>
+              {superAdmin && detail.role !== 'SUPER_ADMIN' && (
+                <button type="button" className="btn btn-danger" onClick={() => deleteAccount(detail)}>
+                  <Trash2 size={16} aria-hidden="true" /> Delete
+                </button>
+              )}
               <button type="button" className="btn btn-secondary" onClick={() => toggleStatus(detail)}>
                 <Power size={16} aria-hidden="true" /> {detail.status === 'Active' ? 'Deactivate' : 'Activate'}
               </button>
