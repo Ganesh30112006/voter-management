@@ -36,6 +36,11 @@ describe('column detection', () => {
     const m = autoDetectMapping(['Name', 'Ward']);
     expect(mappingErrors(m).some((e) => e.startsWith('Voter ID'))).toBe(true);
     expect(mappingErrors({ ...m, voterId: 0 }).some((e) => e.includes('same column'))).toBe(true);
+    // A ward or status chosen for the whole file needs no column.
+    const full = autoDetectMapping(['Voter ID', 'Full Name', 'House Number', 'Ward', 'Status']);
+    const noWard = { ...full, wardNumber: -1, status: -1 };
+    expect(mappingErrors(noWard)).toHaveLength(2);
+    expect(mappingErrors(noWard, { wardNumber: true, status: true })).toEqual([]);
   });
 });
 

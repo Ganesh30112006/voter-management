@@ -63,6 +63,8 @@ export function ImportPage() {
   const [textlessPages, setTextlessPages] = useState<number[]>([]);
   const [readProgress, setReadProgress] = useState<{ page: number; pages: number } | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  // Excel / CSV: one ward (and status) for every row instead of a column, e.g. a ward-wise voter list.
+  const [fileChoice, setFileChoice] = useState({ wardId: '', status: '' });
   const [edits, setEdits] = useState<Record<number, Partial<RowValues>>>({});
   const [tab, setTab] = useState<RowCategory>('valid');
   const [page, setPage] = useState(1);
@@ -94,7 +96,9 @@ export function ImportPage() {
 
   const validated = useMemo<ValidatedRow[]>(() => {
     if (!mapping || step === 'upload' || step === 'map' || !ctxQuery.data) return [];
-    const raw = extractRows(dataRows, mapping, firstRowNumber).map((r) => ({ ...r, values: { ...r.values, ...edits[r.rowNumber] } }));
+    const fileWard = wards.find((w) => w.id === fileChoice.wardId);
+    const fixed = { ...(fileWard ? { wardNumber: String(fileWard.number) } : {}), ...(fileChoice.status ? { status: fileChoice.status } : {}) };
+    const raw = extractRows(dataRows, mapping, firstRowNumber).map((r) => ({ ...r, values: { ...r.values, ...fixed, ...edits[r.rowNumber] } }));
     return validateRows(raw, {
       wards,
       booths,
@@ -102,7 +106,7 @@ export function ImportPage() {
       existingHouseholds: new Map(ctxQuery.data.households),
       existingVoters,
     });
-  }, [mapping, step, ctxQuery.data, sheetData, edits, wards, booths, existingVoters]); // eslint-disable-line react-hooks/exhaustive-deps -- dataRows and firstRowNumber derive from sheetData
+  }, [mapping, step, ctxQuery.data, sheetData, edits, wards, booths, existingVoters, fileChoice]); // eslint-disable-line react-hooks/exhaustive-deps -- dataRows and firstRowNumber derive from sheetData
 
   // Rows in the file whose Voter ID is already in Voter Desk (they are kept or replaced as chosen).
   const existingInFile = useMemo(() => {
@@ -132,6 +136,7 @@ export function ImportPage() {
     setFromPdf(false);
     setRoll(null);
     setRollChoice({ wardId: '', boothId: '', status: '' });
+    setFileChoice({ wardId: '', status: '' });
     setTextlessPages([]);
     setExistingVoters('keep');
     setMapping(null);
@@ -192,7 +197,7 @@ export function ImportPage() {
     else if (f) acceptFile(f);
   };
 
-  const mapErrors = mapping ? mappingErrors(mapping) : [];
+  const mapErrors = mapping ? mappingErrors(mapping, { wardNumber: !!fileChoice.wardId, status: !!fileChoice.status }) : [];
 
   const editValue = (rowNumber: number, field: ImportField, value: string) =>
     setEdits((e) => ({ ...e, [rowNumber]: { ...e[rowNumber], [field]: value } }));
@@ -488,8 +493,34 @@ export function ImportPage() {
                   This worksheet has no data rows.
                 </div>
               )}
+              <div className="mapping-grid" style={{ marginBottom: 16 }}>
+                <label className="field">
+                  <span className="field-label">Ward for this file</span>
+                  <select className="select" value={fileChoice.wardId} onChange={(e) => setFileChoice({ ...fileChoice, wardId: e.target.value })}>
+                    <option value="">From the Ward Number column</option>
+                    {wards.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        Ward {w.number} (every row)
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field-hint">Choose a ward to upload a ward-wise list: every voter goes into that ward.</span>
+                </label>
+                <label className="field">
+                  <span className="field-label">Status for this file</span>
+                  <select className="select" value={fileChoice.status} onChange={(e) => setFileChoice({ ...fileChoice, status: e.target.value })}>
+                    <option value="">From the Status column</option>
+                    {VOTER_STATUSES.map((st) => (
+                      <option key={st} value={st}>
+                        {st} (every row)
+                      </option>
+                    ))}
+                  </select>
+                  <span className="field-hint">Use this when the file has no Status column.</span>
+                </label>
+              </div>
               <div className="mapping-grid">
-                {IMPORT_FIELDS.map((f) => (
+                {IMPORT_FIELDS.filter((f) => !(f.key === 'wardNumber' && fileChoice.wardId) && !(f.key === 'status' && fileChoice.status)).map((f) => (
                   <label key={f.key} className="field">
                     <span className="field-label">
                       {f.label}

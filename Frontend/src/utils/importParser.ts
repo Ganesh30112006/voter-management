@@ -74,10 +74,11 @@ export function findHeaderRow(rows: string[][]): number {
   return best;
 }
 
-export function mappingErrors(mapping: ColumnMapping): string[] {
+/** `fixed`: fields set for every row on the import page (e.g. the ward), which need no column. */
+export function mappingErrors(mapping: ColumnMapping, fixed: Partial<Record<ImportField, boolean>> = {}): string[] {
   const errors: string[] = [];
   for (const f of IMPORT_FIELDS) {
-    if (f.required && mapping[f.key] === -1) errors.push(`${f.label} must be mapped to a column`);
+    if (f.required && !fixed[f.key] && mapping[f.key] === -1) errors.push(`${f.label} must be mapped to a column`);
   }
   const seen = new Map<number, string>();
   for (const f of IMPORT_FIELDS) {
