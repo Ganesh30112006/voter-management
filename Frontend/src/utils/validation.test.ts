@@ -20,7 +20,9 @@ describe('Indian mobile numbers', () => {
 describe('voter status', () => {
   it('normalizes case and whitespace only', () => {
     expect(normalizeVoterStatus('  active ')).toBe('Active');
-    expect(normalizeVoterStatus('NOT   ACTIVE')).toBe('Not Active');
+    expect(normalizeVoterStatus('NOT   ACTIVE')).toBe('Dead');
+    expect(normalizeVoterStatus('dead')).toBe('Dead');
+    expect(normalizeVoterStatus('Deceased')).toBe('Dead');
     expect(normalizeVoterStatus('shifted')).toBe('Shifted');
   });
 

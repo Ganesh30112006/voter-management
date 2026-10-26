@@ -176,7 +176,7 @@ function notesFor(key: string): string {
     case 'boothNumber':
       return 'Optional; a booth number in that ward. Anything else is ignored and the voter is added without a booth';
     case 'status':
-      return 'Exactly one of: Active, Not Active, Shifted';
+      return 'Exactly one of: Active, Dead, Shifted';
     case 'householdId':
       return 'Optional; members of one household share the same ID';
     default:

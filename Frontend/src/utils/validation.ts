@@ -16,7 +16,9 @@ export function isValidIndianMobile(raw: string): boolean {
 
 /** Accepts harmless differences in case and whitespace; returns null if not a known status. */
 export function normalizeVoterStatus(raw: unknown): VoterStatus | null {
-  const v = String(raw ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const v = String(raw ?? '').normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
+  // "Not Active" was the old name of Dead; files may also say deceased, died, expired or మరణించారు.
+  if (['not active', 'deceased', 'death', 'died', 'expired', 'మరణించారు', 'మరణం', 'మృతి'].includes(v)) return 'Dead';
   return VOTER_STATUSES.find((s) => s.toLowerCase() === v) ?? null;
 }
 

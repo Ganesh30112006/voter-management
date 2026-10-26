@@ -179,7 +179,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
 
     const status = normalizeVoterStatus(values.status);
     if (values.status === '') issues.push({ field: 'status', message: 'Status is missing' });
-    else if (!status) issues.push({ field: 'status', message: `"${values.status}" is not a valid status (Active, Not Active, Shifted)` });
+    else if (!status) issues.push({ field: 'status', message: `"${values.status}" is not a valid status (Active, Dead, Shifted)` });
 
     let ward: Ward | undefined;
     let booth: Booth | undefined;

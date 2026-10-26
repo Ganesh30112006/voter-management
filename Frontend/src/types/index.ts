@@ -77,7 +77,7 @@ export interface WardSummary extends Ward {
   booths: (Booth & { voterCount: number; adminIds: string[] })[];
 }
 
-export const VOTER_STATUSES = ['Active', 'Not Active', 'Shifted'] as const;
+export const VOTER_STATUSES = ['Active', 'Dead', 'Shifted'] as const;
 export type VoterStatus = (typeof VOTER_STATUSES)[number];
 
 export const GENDERS = ['Male', 'Female', 'Other'] as const;
@@ -335,7 +335,7 @@ export interface GroupRow {
   label: string;
   voters: number;
   active: number;
-  notActive: number;
+  dead: number;
   shifted: number;
   received: number;
   notReceived: number;
@@ -352,7 +352,7 @@ export interface DashboardStats {
   totalWards: number;
   totalBooths: number;
   activeVoters: number;
-  notActiveVoters: number;
+  deadVoters: number;
   shiftedVoters: number;
   votersReceived: number;
   votersNotReceived: number;
@@ -372,7 +372,7 @@ export interface ReportData {
   summary: {
     totalVoters: number;
     active: number;
-    notActive: number;
+    dead: number;
     shifted: number;
     votersReceived: number;
     votersNotReceived: number;

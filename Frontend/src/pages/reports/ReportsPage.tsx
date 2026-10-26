@@ -17,8 +17,8 @@ import { formatCurrency, formatNumber } from '../../utils/format';
 import { boothsInArea, isSuperAdmin, wardsInArea } from '../../utils/permissions';
 import './ReportsPage.css';
 
-const GROUP_HEADERS = ['Name', 'Voters', 'Active', 'Not Active', 'Shifted', 'Received', 'Not Received', 'Transactions', 'Amount (INR)'];
-const groupRow = (r: GroupRow): Cell[] => [r.label, r.voters, r.active, r.notActive, r.shifted, r.received, r.notReceived, r.transactions, r.amount];
+const GROUP_HEADERS = ['Name', 'Voters', 'Active', 'Dead', 'Shifted', 'Received', 'Not Received', 'Transactions', 'Amount (INR)'];
+const groupRow = (r: GroupRow): Cell[] => [r.label, r.voters, r.active, r.dead, r.shifted, r.received, r.notReceived, r.transactions, r.amount];
 
 function sheetsFor(d: ReportData) {
   return [
@@ -28,7 +28,7 @@ function sheetsFor(d: ReportData) {
       rows: [
         ['Total voters', d.summary.totalVoters],
         ['Active', d.summary.active],
-        ['Not Active', d.summary.notActive],
+        ['Dead', d.summary.dead],
         ['Shifted', d.summary.shifted],
         ['Voters received (unique)', d.summary.votersReceived],
         ['Voters not received (unique)', d.summary.votersNotReceived],
@@ -131,7 +131,7 @@ function GroupTable({ rows, caption }: { rows: GroupRow[]; caption: string }) {
             <th scope="col">Name</th>
             <th scope="col" className="text-right">Voters</th>
             <th scope="col" className="text-right">Active</th>
-            <th scope="col" className="text-right">Not Active</th>
+            <th scope="col" className="text-right">Dead</th>
             <th scope="col" className="text-right">Shifted</th>
             <th scope="col" className="text-right">Received</th>
             <th scope="col" className="text-right">Not Received</th>
@@ -145,7 +145,7 @@ function GroupTable({ rows, caption }: { rows: GroupRow[]; caption: string }) {
               <td data-label="Name">{r.label}</td>
               <td data-label="Voters" className="text-right mono">{formatNumber(r.voters)}</td>
               <td data-label="Active" className="text-right mono">{formatNumber(r.active)}</td>
-              <td data-label="Not Active" className="text-right mono">{formatNumber(r.notActive)}</td>
+              <td data-label="Dead" className="text-right mono">{formatNumber(r.dead)}</td>
               <td data-label="Shifted" className="text-right mono">{formatNumber(r.shifted)}</td>
               <td data-label="Received" className="text-right mono">{formatNumber(r.received)}</td>
               <td data-label="Not Received" className="text-right mono">{formatNumber(r.notReceived)}</td>
@@ -157,7 +157,7 @@ function GroupTable({ rows, caption }: { rows: GroupRow[]; caption: string }) {
             <td data-label="Name">Total</td>
             <td data-label="Voters" className="text-right mono">{formatNumber(total.voters)}</td>
             <td data-label="Active" />
-            <td data-label="Not Active" />
+            <td data-label="Dead" />
             <td data-label="Shifted" />
             <td data-label="Received" className="text-right mono">{formatNumber(total.received)}</td>
             <td data-label="Not Received" className="text-right mono">{formatNumber(total.notReceived)}</td>
@@ -272,7 +272,7 @@ export function ReportsPage() {
       ) : (
         <div className="stack">
           <StatGrid>
-            <StatCard label="Total voters" value={formatNumber(s?.totalVoters ?? 0)} hint={s ? `${formatNumber(s.active)} active · ${formatNumber(s.notActive)} not active · ${formatNumber(s.shifted)} shifted` : undefined} icon={Users} loading={busy} />
+            <StatCard label="Total voters" value={formatNumber(s?.totalVoters ?? 0)} hint={s ? `${formatNumber(s.active)} active · ${formatNumber(s.dead)} dead · ${formatNumber(s.shifted)} shifted` : undefined} icon={Users} loading={busy} />
             <StatCard label="Voters received" hint="Unique voters" value={formatNumber(s?.votersReceived ?? 0)} icon={CheckCircle2} tone="green" loading={busy} />
             <StatCard label="Voters not received" hint="Unique voters" value={formatNumber(s?.votersNotReceived ?? 0)} icon={XCircle} tone="gray" loading={busy} />
             <StatCard label="Successful transactions" value={formatNumber(s?.transactions ?? 0)} icon={Receipt} loading={busy} />
@@ -296,7 +296,7 @@ export function ReportsPage() {
                   <StatusDonut
                     data={[
                       { name: 'Active', value: data.summary.active, color: CHART.green },
-                      { name: 'Not Active', value: data.summary.notActive, color: CHART.gray },
+                      { name: 'Dead', value: data.summary.dead, color: CHART.gray },
                       { name: 'Shifted', value: data.summary.shifted, color: CHART.amber },
                     ]}
                   />

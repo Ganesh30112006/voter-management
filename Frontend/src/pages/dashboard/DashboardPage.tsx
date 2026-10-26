@@ -106,7 +106,7 @@ export function DashboardPage() {
             {superAdmin && <StatCard label="Total Wards" value={formatNumber(s?.totalWards ?? 0)} icon={MapPinned} tone="navy" loading={busy} />}
             {superAdmin && <StatCard label="Total Booths" value={formatNumber(s?.totalBooths ?? 0)} icon={MapPin} tone="navy" loading={busy} />}
             <StatCard label="Active Voters" value={formatNumber(s?.activeVoters ?? 0)} icon={UserCheck} tone="green" loading={busy} />
-            <StatCard label="Not Active Voters" value={formatNumber(s?.notActiveVoters ?? 0)} icon={CircleSlash} tone="gray" loading={busy} />
+            <StatCard label="Dead Voters" value={formatNumber(s?.deadVoters ?? 0)} icon={CircleSlash} tone="gray" loading={busy} />
             <StatCard label="Shifted Voters" value={formatNumber(s?.shiftedVoters ?? 0)} icon={Truck} tone="amber" loading={busy} />
           </StatGrid>
 
@@ -229,7 +229,7 @@ function shortDate(d: string): string {
 function DashboardCharts({ s, superAdmin }: { s: DashboardStats; superAdmin: boolean }) {
   const voterStatus = [
     { name: 'Active', value: s.activeVoters, color: CHART.green },
-    { name: 'Not Active', value: s.notActiveVoters, color: CHART.gray },
+    { name: 'Dead', value: s.deadVoters, color: CHART.gray },
     { name: 'Shifted', value: s.shiftedVoters, color: CHART.amber },
   ];
   const paymentStatus = [

@@ -3,7 +3,7 @@ import type { AccountStatus, PaymentStatus, TransactionStatus, VoterStatus } fro
 
 const VOTER_TONE: Record<VoterStatus, string> = {
   Active: 'badge-success',
-  'Not Active': 'badge-neutral',
+  Dead: 'badge-neutral',
   Shifted: 'badge-warning',
 };
 

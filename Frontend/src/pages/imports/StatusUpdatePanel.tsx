@@ -19,7 +19,7 @@ type Result = { updated: number; unchanged: number; notFound: string[] };
 
 /**
  * Updates voter status from a list such as deceased or shifted voters: every Voter ID (EPIC) in the file is
- * matched to existing voters, and the chosen status is applied to all of them. Not Active voters cannot be paid;
+ * matched to existing voters, and the chosen status is applied to all of them. Dead voters cannot be paid;
  * Shifted voters can, but a BLO needs its Corporator's permission.
  */
 export function StatusUpdatePanel({ existingVoterIds, onUpdated }: Props) {
@@ -89,7 +89,7 @@ export function StatusUpdatePanel({ existingVoterIds, onUpdated }: Props) {
           ? 'These voters become Active and can receive a payment again.'
           : status === 'Shifted'
             ? 'Shifted voters can still be paid, but a BLO must ask its Corporator for permission first. Payments already made are kept.'
-            : 'Not Active voters cannot receive a payment. Payments already made are kept.',
+            : 'Dead voters cannot receive a payment. Payments already made are kept.',
       confirmLabel: 'Update status',
       tone: status === 'Active' ? 'primary' : 'danger',
     });
@@ -175,11 +175,11 @@ export function StatusUpdatePanel({ existingVoterIds, onUpdated }: Props) {
               <option value="">Select status</option>
               {VOTER_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {s === 'Not Active' ? 'Not Active (deceased)' : s}
+                  {s}
                 </option>
               ))}
             </select>
-            <span className="field-hint">Not Active voters cannot be paid. Shifted voters can, with the Corporator's permission for BLOs.</span>
+            <span className="field-hint">Dead voters cannot be paid. Shifted voters can, with the Corporator's permission for BLOs.</span>
           </label>
           {saving && (
             <p className="small" role="status" aria-live="polite">

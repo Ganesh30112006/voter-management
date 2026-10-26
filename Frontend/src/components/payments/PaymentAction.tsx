@@ -16,7 +16,7 @@ interface Props {
 }
 
 /**
- * A "Pay" button, a green tick once the voter has received a payment, or "Not eligible" for Not Active voters.
+ * A "Pay" button, a green tick once the voter has received a payment, or "Dead" for dead voters (never paid).
  * Shifted voters can be paid, but a BLO first asks its Corporator for permission.
  */
 export function PaymentAction({ voter, onPay, onViewReceipt, onChanged }: Props) {
@@ -38,10 +38,10 @@ export function PaymentAction({ voter, onPay, onViewReceipt, onChanged }: Props)
       </button>
     );
   }
-  if (voter.status === 'Not Active') {
+  if (voter.status === 'Dead') {
     return (
-      <span className="small muted" title="Not Active voters cannot be paid.">
-        Not eligible
+      <span className="small muted" title="Dead voters cannot be paid.">
+        Dead · no payment
       </span>
     );
   }
