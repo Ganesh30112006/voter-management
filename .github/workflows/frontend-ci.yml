@@ -48,7 +48,8 @@ jobs:
       AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN || 'arn:aws:iam::492462083767:role/voterdesk-frontend-deploy' }}
       AWS_REGION: ${{ vars.AWS_REGION || 'ap-south-1' }}
       AMPLIFY_APP_ID: ${{ vars.AMPLIFY_APP_ID || 'd1il8v95socjri' }}
-      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://d37boaln3snj1u.cloudfront.net/api' }}
+      # The API on the custom domain (CloudFront E3NW6NPUQSE0HH; d37boaln3snj1u.cloudfront.net still works).
+      VITE_API_BASE_URL: https://api.barakagroupofservice.live/api
     defaults:
       run:
         working-directory: Frontend
