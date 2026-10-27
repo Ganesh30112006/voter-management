@@ -65,7 +65,7 @@ export function WardsPage() {
         title="Wards & Booths"
         description={
           superAdmin
-            ? 'Ward → Booth → Voters. Expand a ward to see its booths and assign its Corporator and BLOs.'
+            ? 'Ward → Booth → Voters. Expand a ward to see its booths and assign its Corporators and BLOs.'
             : 'Your wards. Add booths and put your BLOs on them.'
         }
         actions={
@@ -116,7 +116,7 @@ export function WardsPage() {
                   <div className="ward-stats small">
                     <span>{formatNumber(w.booths.length)} booths</span>
                     <span>{formatNumber(w.voterCount)} voters</span>
-                    <span>{w.adminIds.length ? w.adminIds.join(', ') : 'No Corporator'}</span>
+                    <span>{w.adminIds.length ? w.adminIds.join(', ') : superAdmin ? 'No Corporator' : ''}</span>
                     <span>
                       Amount: {w.paymentAmount !== null ? formatCurrency(w.paymentAmount) : ctx ? `${formatCurrency(ctx.defaultAmount)} (overall)` : '…'}
                     </span>
@@ -131,7 +131,7 @@ export function WardsPage() {
                     {superAdmin && (
                       <>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'assignWard', ward: w })}>
-                          <UserCog size={15} aria-hidden="true" /> Corporator
+                          <UserCog size={15} aria-hidden="true" /> Corporators
                         </button>
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'ward', ward: w })} aria-label={`Edit ward ${w.number}`}>
                           <Pencil size={15} aria-hidden="true" />
@@ -210,8 +210,8 @@ export function WardsPage() {
       {dialog?.kind === 'assignWard' && (
         <AssignAdminsModal
           target={{ kind: 'ward', id: dialog.ward.id }}
-          title={`Corporator for Ward ${dialog.ward.number}`}
-          description="A ward has one Corporator, who has full control over its voters, booths and BLOs. Changing the Corporator moves the ward: the previous Corporator and their BLOs lose it."
+          title={`Corporators for Ward ${dialog.ward.number}`}
+          description="A ward can have several Corporators. They share the ward's voter list; each one's changes, statuses, payments and BLOs stay separate and are never shown to the others."
           assigned={dialog.ward.adminIds}
           onClose={() => setDialog(null)}
           onSaved={() => afterChange(`Ward ${dialog.ward.number} assignment saved.`)}

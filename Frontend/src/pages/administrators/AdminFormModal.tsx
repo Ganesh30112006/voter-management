@@ -5,7 +5,6 @@ import { Controller, useForm } from 'react-hook-form';
 import { FormField } from '../../components/common/FormField';
 import { Modal } from '../../components/common/Modal';
 import { useCurrentAdmin } from '../../hooks/useAuth';
-import { useConfirm } from '../../hooks/useConfirm';
 import { useQuery } from '../../hooks/useQuery';
 import { useWards } from '../../hooks/useWards';
 import { adminService } from '../../services/adminService';
@@ -29,7 +28,6 @@ const FIELDS = ['fullName', 'mobile', 'location', 'wardIds', 'boothIds', 'passwo
 
 export function AdminFormModal({ admin, role: createRole, defaultCorporatorId = '', onClose, onSaved }: Props) {
   const actor = useCurrentAdmin();
-  const confirm = useConfirm();
   const editing = !!admin;
   const role: ManagedRole = admin ? (admin.role as ManagedRole) : createRole;
   const isBlo = role === 'BLO';
@@ -76,7 +74,7 @@ export function AdminFormModal({ admin, role: createRole, defaultCorporatorId = 
   const wardChoices = corporatorWardIds ? wards.filter((w) => corporatorWardIds.includes(w.id)) : wards;
   const availableBooths = wardIds.flatMap((w) => boothsForWard(w));
 
-  const onSubmit = async (values: AdminFormValues, moveWards = false): Promise<void> => {
+  const onSubmit = async (values: AdminFormValues): Promise<void> => {
     setServerError(null);
     // corporatorId is not part of the Zod schema (it would be stripped from `values`), so read it from the form.
     const chosenCorporator = getValues('corporatorId') ?? '';
@@ -88,7 +86,7 @@ export function AdminFormModal({ admin, role: createRole, defaultCorporatorId = 
       if (editing) {
         const parsed = editSchema.parse(values);
         onSaved(
-          await adminService.update(admin.id, { ...parsed, wardIds: isSuper ? [] : parsed.wardIds, boothIds: isBlo ? parsed.boothIds : [], moveWards }),
+          await adminService.update(admin.id, { ...parsed, wardIds: isSuper ? [] : parsed.wardIds, boothIds: isBlo ? parsed.boothIds : [] }),
           false,
         );
       } else {
@@ -101,24 +99,11 @@ export function AdminFormModal({ admin, role: createRole, defaultCorporatorId = 
             boothIds: isBlo ? input.boothIds : [],
             role,
             corporatorId: isBlo ? chosenCorporator : undefined,
-            moveWards,
           }),
           true,
         );
       }
     } catch (e) {
-      // A ward has one Corporator: offer to move a taken ward here, or cancel.
-      if (e instanceof ApiError && e.code === 'WARD_TAKEN') {
-        const move = await confirm({
-          title: 'Ward already assigned',
-          message: `${e.message} Move it to ${editing ? admin.id : 'this Corporator'}? The other Corporator and their BLOs will lose it.`,
-          confirmLabel: 'Move ward',
-          tone: 'danger',
-        });
-        if (move) return onSubmit(values, true);
-        setError('wardIds', { message: 'Choose wards that are not assigned to another Corporator' });
-        return;
-      }
       if (e instanceof ApiError && e.fieldErrors) {
         for (const [field, message] of Object.entries(e.fieldErrors)) {
           if ((FIELDS as readonly string[]).includes(field)) setError(field as (typeof FIELDS)[number], { message });

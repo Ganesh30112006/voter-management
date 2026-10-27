@@ -19,7 +19,7 @@ export function VotersPage() {
         title={superAdmin ? 'Voter Management' : 'My Voters'}
         description={
           superAdmin
-            ? 'Search, add, edit and remove voters. Click Pay to record a payment.'
+            ? "Search, add, edit and remove voters. Payments are recorded by each Corporator's team."
             : admin.role === 'BLO'
               ? 'Voters in your assigned booths. Click Pay to record a payment.'
               : 'Voters in your wards. Search, add, edit and remove them; click Pay to record a payment.'

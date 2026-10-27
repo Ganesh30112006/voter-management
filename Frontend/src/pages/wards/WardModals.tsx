@@ -81,6 +81,7 @@ export function WardFormModal({ ward, onClose, onSaved }: { ward?: Ward; onClose
 
 /** A ward's own payment amount for every voter in it; empty uses the overall amount from Settings. */
 export function WardAmountModal({ ward, defaultAmount, onClose, onSaved }: { ward: WardSummary; defaultAmount: number | null; onClose: () => void; onSaved: () => void }) {
+  const actor = useCurrentAdmin();
   const [value, setValue] = useState(ward.paymentAmount !== null ? String(ward.paymentAmount) : '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -115,7 +116,7 @@ export function WardAmountModal({ ward, defaultAmount, onClose, onSaved }: { war
         <ServerError message={error} />
         <FormField
           label="Amount for each voter (₹)"
-          hint={`Leave empty to use the overall amount${defaultAmount !== null ? ` (${formatCurrency(defaultAmount)})` : ''}. Applies to new payments only.`}
+          hint={`${actor.role === 'CORPORATOR' ? 'For your team only. ' : "Used by Corporators that have not set their own. "}Leave empty to use the overall amount${defaultAmount !== null ? ` (${formatCurrency(defaultAmount)})` : ''}. Applies to new payments only.`}
         >
           <input className="input" type="number" inputMode="numeric" min={1} max={100000} value={value} onChange={(e) => setValue(e.target.value)} autoFocus />
         </FormField>
@@ -241,14 +242,13 @@ export function AssignAdminsModal({
   }, []);
 
   const save = async () => {
-    // Giving the ward to a different Corporator takes it away from the current one: confirm the move.
-    const current = assigned[0];
-    if (target.kind === 'ward' && current && selected[0] !== current) {
-      const owner = admins?.find((a) => a.id === current);
+    // Taking a Corporator off the ward also takes it from its BLOs: confirm.
+    const removed = target.kind === 'ward' ? assigned.filter((id) => !selected.includes(id)) : [];
+    if (removed.length) {
       const ok = await confirm({
-        title: selected[0] ? `Move this ward to ${selected[0]}?` : 'Remove the Corporator?',
-        message: `This ward is assigned to ${current}${owner ? ` (${owner.fullName})` : ''}. ${current} and their BLOs will lose it.`,
-        confirmLabel: selected[0] ? 'Move ward' : 'Remove',
+        title: `Remove ${removed.join(', ')} from this ward?`,
+        message: `${removed.join(', ')} and their BLOs will lose this ward. Their payments are kept.`,
+        confirmLabel: 'Remove',
         tone: 'danger',
       });
       if (!ok) return;
@@ -297,23 +297,13 @@ export function AssignAdminsModal({
           </p>
         ) : (
           <div className="check-list" style={{ flexDirection: 'column', maxHeight: 320 }}>
-            {target.kind === 'ward' && (
-              <label className="check">
-                <input type="radio" name="ward-corporator" checked={selected.length === 0} onChange={() => setSelected([])} />
-                <span className="muted">No Corporator</span>
-              </label>
-            )}
             {admins?.map((a) => (
               <label key={a.id} className="check">
-                {target.kind === 'ward' ? (
-                  <input type="radio" name="ward-corporator" checked={selected[0] === a.id} onChange={() => setSelected([a.id])} />
-                ) : (
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(a.id)}
-                    onChange={(e) => setSelected((s) => (e.target.checked ? [...s, a.id] : s.filter((x) => x !== a.id)))}
-                  />
-                )}
+                <input
+                  type="checkbox"
+                  checked={selected.includes(a.id)}
+                  onChange={(e) => setSelected((s) => (e.target.checked ? [...s, a.id] : s.filter((x) => x !== a.id)))}
+                />
                 <span>
                   {a.id} – {a.fullName}
                   {a.status === 'Inactive' && <span className="muted"> (inactive)</span>}

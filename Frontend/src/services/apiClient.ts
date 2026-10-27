@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { ApiError, emitSessionExpired, type ApiErrorCode } from './apiError';
+import { teamView } from './teamView';
 import { tokenStorage } from './tokenStorage';
 
 export const apiClient = axios.create({
@@ -11,6 +12,8 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const token = tokenStorage.get();
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // A Super Admin's chosen Corporator team (ignored by the server for everyone else).
+  if (teamView.get()) config.headers['X-Team-Id'] = teamView.get();
   return config;
 });
 

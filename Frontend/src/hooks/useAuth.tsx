@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { onSessionExpired } from '../services/apiError';
 import { authService } from '../services/authService';
+import { teamView } from '../services/teamView';
 import { tokenStorage } from '../services/tokenStorage';
 import type { Admin } from '../types';
 import { AuthContext, type AuthState } from './authContext';
@@ -47,6 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    teamView.set('');
     try {
       await authService.logout();
     } catch {

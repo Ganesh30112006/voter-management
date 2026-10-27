@@ -190,3 +190,24 @@
     display: none;
   }
 }
+
+.team-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 8px;
+}
+.team-picker .select {
+  min-width: 0;
+  max-width: 220px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+@media (max-width: 640px) {
+  .team-picker > span {
+    display: none;
+  }
+  .team-picker .select {
+    max-width: 130px;
+  }
+}

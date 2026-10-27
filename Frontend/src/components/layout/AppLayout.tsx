@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { WardsProvider } from '../../hooks/useWards';
+import { useTeamView } from '../../services/teamView';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import './AppLayout.css';
@@ -17,6 +18,8 @@ export function AppLayout() {
   });
   const [mobileOpen, setMobileOpen] = useState(false);
   const { pathname } = useLocation();
+  // A Super Admin switching the Corporator it views reloads the page's data.
+  const team = useTeamView();
 
   useEffect(() => {
     setMobileOpen(false);
@@ -44,7 +47,7 @@ export function AppLayout() {
         <div className="app-main">
           <Topbar onOpenMenu={() => setMobileOpen(true)} />
           <main id="main" className="app-content" tabIndex={-1}>
-            <Outlet />
+            <Outlet key={team} />
           </main>
         </div>
       </div>

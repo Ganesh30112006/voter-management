@@ -47,6 +47,8 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
   const { wards: allWards, wardLabel, boothsForWard, loaded } = useWards();
   // A Corporator adds and edits voters only in its own wards.
   const wards = wardsInArea(admin, allWards);
+  // A Corporator's edits apply to its own list; the Voter ID and ward are shared with the ward's other Corporators.
+  const sharedLocked = state.mode === 'edit' && admin.role === 'CORPORATOR';
   const [serverError, setServerError] = useState<string | null>(null);
   const [dupes, setDupes] = useState<DuplicateCheckResult | null>(null);
   // A ref, not state: the submit handler must see the value set by the button click in the same event.
@@ -190,8 +192,8 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
         )}
 
         <div className="form-grid">
-          <FormField label="Voter ID / Electoral ID" error={errors.voterId?.message} required>
-            <input className="input" autoComplete="off" {...register('voterId')} />
+          <FormField label="Voter ID / Electoral ID" error={errors.voterId?.message} required hint={sharedLocked ? 'Shared with other Corporators' : undefined}>
+            <input className="input" autoComplete="off" readOnly={sharedLocked} {...register('voterId')} />
           </FormField>
           <FormField label="Full name" error={errors.fullName?.message} required>
             <input className="input" autoComplete="off" {...register('fullName')} />
@@ -206,15 +208,22 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
               ))}
             </select>
           </FormField>
-          <FormField label="Ward" error={errors.wardId?.message} required>
-            <select className="select" {...register('wardId')}>
-              <option value="">Select ward</option>
-              {wards.map((w) => (
-                <option key={w.id} value={w.id}>
-                  Ward {w.number} – {w.name}
-                </option>
-              ))}
-            </select>
+          <FormField label="Ward" error={errors.wardId?.message} required hint={sharedLocked ? 'Shared with other Corporators' : undefined}>
+            {sharedLocked ? (
+              <>
+                <input className="input" value={wardLabel(wardId)} disabled />
+                <input type="hidden" {...register('wardId')} />
+              </>
+            ) : (
+              <select className="select" {...register('wardId')}>
+                <option value="">Select ward</option>
+                {wards.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    Ward {w.number} – {w.name}
+                  </option>
+                ))}
+              </select>
+            )}
           </FormField>
           <FormField label="Booth" error={errors.boothId?.message} hint={!wardId ? 'Select a ward first' : 'Optional'}>
             <select className="select" {...register('boothId')}>

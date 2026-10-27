@@ -4,7 +4,9 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuth, useCurrentAdmin } from '../../hooks/useAuth';
 import { useConfirm } from '../../hooks/useConfirm';
 import { errorMessage } from '../../services/apiError';
+import { adminService, type AdminOption } from '../../services/adminService';
 import { reportService } from '../../services/reportService';
+import { teamView, useTeamView } from '../../services/teamView';
 import type { Notification } from '../../types';
 import { formatDateTime } from '../../utils/format';
 import { ROLE_LABELS } from '../../utils/permissions';
@@ -162,7 +164,41 @@ function ProfileMenu() {
   );
 }
 
+/**
+ * Super Admin: whose view to show. Each Corporator (with its BLOs) has its own changes to the shared voter list,
+ * its own payments and permissions; "All Corporators" shows the shared list and every team's payments.
+ */
+function TeamPicker() {
+  const team = useTeamView();
+  const [corporators, setCorporators] = useState<AdminOption[]>([]);
+  useEffect(() => {
+    adminService
+      .options()
+      .then((list) => {
+        const found = list.filter((a) => a.role === 'CORPORATOR');
+        setCorporators(found);
+        // A Corporator that was deleted is no longer offered.
+        if (team && !found.some((c) => c.id === team)) teamView.set('');
+      })
+      .catch(() => setCorporators([]));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <label className="team-picker">
+      <span className="small muted">Viewing</span>
+      <select className="select" value={team} onChange={(e) => teamView.set(e.target.value)} aria-label="Corporator to view">
+        <option value="">All Corporators</option>
+        {corporators.map((c) => (
+          <option key={c.id} value={c.id}>
+            {c.id} – {c.fullName}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
+  const admin = useCurrentAdmin();
   return (
     <header className="topbar">
       <button type="button" className="icon-btn topbar-menu" onClick={onOpenMenu} aria-label="Open menu">
@@ -170,6 +206,7 @@ export function Topbar({ onOpenMenu }: { onOpenMenu: () => void }) {
       </button>
       <Breadcrumbs />
       <div className="spacer" />
+      {admin.role === 'SUPER_ADMIN' && <TeamPicker />}
       <Notifications />
       <ProfileMenu />
     </header>

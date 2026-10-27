@@ -32,7 +32,6 @@ export interface AdminInput {
   wardIds: string[];
   boothIds: string[];
   /** Corporators: take wards that another Corporator already has (after the user chose "Move"). */
-  moveWards?: boolean;
 }
 
 export interface AdminQuery {

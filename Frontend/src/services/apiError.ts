@@ -6,7 +6,6 @@ export type ApiErrorCode =
   | 'VALIDATION'
   | 'CONFLICT'
   /** A ward the Super Admin gave a Corporator already belongs to another Corporator. */
-  | 'WARD_TAKEN'
   | 'NETWORK'
   | 'SERVER';
 

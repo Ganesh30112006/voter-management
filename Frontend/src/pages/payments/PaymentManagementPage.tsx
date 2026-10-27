@@ -7,6 +7,7 @@ import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useQuery } from '../../hooks/useQuery';
 import { useWards } from '../../hooks/useWards';
 import { paymentService } from '../../services/paymentService';
+import { useTeamView } from '../../services/teamView';
 import { formatCurrency } from '../../utils/format';
 
 export function PaymentManagementPage() {
@@ -14,6 +15,8 @@ export function PaymentManagementPage() {
   const { wardLabel } = useWards();
   const [listKey, setListKey] = useState(0);
   const { data: ctx } = useQuery(() => paymentService.context(), 'payment-context');
+  const team = useTeamView();
+  const superAdmin = admin.role === 'SUPER_ADMIN';
 
   return (
     <>
@@ -39,13 +42,21 @@ export function PaymentManagementPage() {
         </div>
       )}
 
-      {admin.role !== 'SUPER_ADMIN' && (
+      {superAdmin && (
+        <p className="small muted" style={{ marginBottom: 16 }}>
+          Super Admins do not record payments: each Corporator's team pays its own voters.{' '}
+          {team ? `Showing ${team}'s team: its list, statuses and payments.` : 'Choose a Corporator under "Viewing" at the top to see one team.'}
+        </p>
+      )}
+
+      {!superAdmin && (
         <p className="small muted" style={{ marginBottom: 16 }}>
           {admin.role === 'BLO' ? 'Showing voters in your assigned booths.' : 'Showing voters in your wards.'}
         </p>
       )}
 
-      {admin.role !== 'BLO' && <ShiftedApprovalsCard onChanged={() => setListKey((k) => k + 1)} />}
+      {/* Permission is given per team: a Super Admin answers only for the Corporator it is viewing. */}
+      {admin.role !== 'BLO' && (!superAdmin || team) && <ShiftedApprovalsCard onChanged={() => setListKey((k) => k + 1)} />}
 
       {/* No default payment filter: a voter must stay visible after paying so the tick shows. */}
       <VoterWorkspace key={listKey} />
