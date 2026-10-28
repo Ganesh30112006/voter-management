@@ -28,7 +28,7 @@ import {
   type RowValues,
   type ValidatedRow,
 } from '../../utils/importParser';
-import { pageRanges, rollRows, type ElectoralRoll } from '../../utils/pdfLayout';
+import { pageRanges, rollRows, unreadablePagesMessage, type ElectoralRoll } from '../../utils/pdfLayout';
 import { StatusUpdatePanel } from './StatusUpdatePanel';
 import './ImportPage.css';
 
@@ -60,7 +60,7 @@ export function ImportPage() {
   const [roll, setRoll] = useState<ElectoralRoll | null>(null);
   // Ward and status are chosen for the whole roll; the booth is optional.
   const [rollChoice, setRollChoice] = useState({ wardId: '', boothId: '', status: '' });
-  const [textlessPages, setTextlessPages] = useState<number[]>([]);
+  const [skippedPages, setSkippedPages] = useState<{ textless: number[]; failed: number[] }>({ textless: [], failed: [] });
   const [readProgress, setReadProgress] = useState<{ page: number; pages: number } | null>(null);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
   // Excel / CSV: one ward (and status) for every row instead of a column, e.g. a ward-wise voter list.
@@ -137,7 +137,7 @@ export function ImportPage() {
     setRoll(null);
     setRollChoice({ wardId: '', boothId: '', status: '' });
     setFileChoice({ wardId: '', status: '' });
-    setTextlessPages([]);
+    setSkippedPages({ textless: [], failed: [] });
     setExistingVoters('keep');
     setMapping(null);
     setEdits({});
@@ -158,7 +158,7 @@ export function ImportPage() {
         return;
       }
       const source = await readImportFile(f, (page, pages) => setReadProgress({ page, pages }));
-      setTextlessPages(source.textlessPages);
+      setSkippedPages({ textless: source.textlessPages, failed: source.failedPages });
       if (source.kind === 'roll') {
         setWorkbook(null);
         setSheet('');
@@ -360,7 +360,7 @@ export function ImportPage() {
                   {roll.unreadBoxes === 1 ? 'was' : 'were'} left out. Add them by hand or from Excel.
                 </div>
               )}
-              <TextlessWarning pages={textlessPages} />
+              <TextlessWarning pages={skippedPages.textless} failed={skippedPages.failed} />
               <p className="small">
                 Voter ID (EPIC), name and house / door number (ఇంటి సంఖ్య) were read from the PDF. Choose the ward and status for all{' '}
                 {formatNumber(roll.records.length)} voters; the booth is optional. You can still correct single rows in the next step.
@@ -480,7 +480,7 @@ export function ImportPage() {
               )}
             </div>
             <div className="card-body">
-              <TextlessWarning pages={textlessPages} />
+              <TextlessWarning pages={skippedPages.textless} failed={skippedPages.failed} />
               {fromPdf && (
                 <div className="alert alert-warning" style={{ marginBottom: 12 }}>
                   <AlertTriangle size={18} aria-hidden="true" />
@@ -861,14 +861,26 @@ function RowView({
   );
 }
 
-/** Lists PDF pages that had no readable text (scanned), so voters on them are not missed silently. */
-function TextlessWarning({ pages }: { pages: number[] }) {
-  if (!pages.length) return null;
+/**
+ * Lists PDF pages that had no readable text (scanned) or could not be read in this browser, so voters on them
+ * are not missed silently.
+ */
+function TextlessWarning({ pages, failed }: { pages: number[]; failed: number[] }) {
   return (
-    <div className="alert alert-warning" style={{ marginBottom: 12 }}>
-      <AlertTriangle size={18} aria-hidden="true" />
-      {pages.length === 1 ? 'Page' : 'Pages'} {pageRanges(pages)} {pages.length === 1 ? 'has' : 'have'} no readable text (scanned) and{' '}
-      {pages.length === 1 ? 'was' : 'were'} skipped. Add voters from {pages.length === 1 ? 'that page' : 'those pages'} by hand or from Excel.
-    </div>
+    <>
+      {pages.length > 0 && (
+        <div className="alert alert-warning" style={{ marginBottom: 12 }}>
+          <AlertTriangle size={18} aria-hidden="true" />
+          {pages.length === 1 ? 'Page' : 'Pages'} {pageRanges(pages)} {pages.length === 1 ? 'has' : 'have'} no readable text (scanned) and{' '}
+          {pages.length === 1 ? 'was' : 'were'} skipped. Add voters from {pages.length === 1 ? 'that page' : 'those pages'} by hand or from Excel.
+        </div>
+      )}
+      {failed.length > 0 && (
+        <div className="alert alert-warning" style={{ marginBottom: 12 }}>
+          <AlertTriangle size={18} aria-hidden="true" />
+          {unreadablePagesMessage(failed)} and {failed.length === 1 ? 'was' : 'were'} skipped. Try the file again in Chrome on a computer.
+        </div>
+      )}
+    </>
   );
 }

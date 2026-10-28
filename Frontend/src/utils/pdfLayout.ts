@@ -9,6 +9,8 @@ export interface PdfTextItem {
   width: number;
   /** Font size in points. */
   size: number;
+  /** Real spaces are part of the text (every glyph was matched), so none are added for gaps. */
+  spaced?: boolean;
 }
 
 /** A voter read from an Election Commission electoral roll. */
@@ -29,10 +31,12 @@ export interface ElectoralRoll {
   unreadBoxes: number;
 }
 
+/** `failedPages`: pages the browser could not read (an error, not a scan); they are skipped. */
 export type PdfLayout =
-  | { kind: 'table'; rows: string[][]; textlessPages: number[] }
-  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[] }
+  | { kind: 'table'; rows: string[][]; textlessPages: number[]; failedPages: number[] }
+  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[]; failedPages: number[] }
   | { kind: 'no-text' }
+  | { kind: 'read-error'; reason: string }
   | { kind: 'unknown' };
 
 interface Line {
@@ -74,17 +78,21 @@ export function groupLines(items: PdfTextItem[]): Line[] {
 /** Joins items that are closer than `gapFactor` x font size into cells. */
 function cells(items: PdfTextItem[], gapFactor: number): Cell[] {
   const out: Cell[] = [];
+  let prev = '';
   for (const item of items) {
     const text = clean(item.str);
     const last = out[out.length - 1];
     const gap = last ? item.x - last.x1 : Infinity;
     if (last && gap <= item.size * gapFactor) {
-      // Some PDFs store every letter separately; only add a space where there is a visible gap.
-      last.text += (gap > item.size * 0.15 ? ' ' : '') + text;
+      // Some PDFs store every letter separately; only add a space where there is a visible gap. When the
+      // spaces are part of the text, use those.
+      const space = item.spaced ? /^\s/.test(item.str) || /\s$/.test(prev) || gap > item.size : gap > item.size * 0.15;
+      last.text += (space ? ' ' : '') + text;
       last.x1 = Math.max(last.x1, item.x + item.width);
     } else {
       out.push({ text, x0: item.x, x1: item.x + item.width });
     }
+    prev = item.str;
   }
   return out;
 }
@@ -167,8 +175,7 @@ export function voterIdsInText(text: string): string[] {
 
 /** A page's text, line by line (pieces of one line joined as they appear). */
 export function pageText(items: PdfTextItem[]): string {
-  return groupLines(items)
-    .filter((l) => !isPrintMargin(l))
+  return withoutPrintMargins(groupLines(items))
     .map((l) => lineText(l.items))
     .join('\n');
 }
@@ -185,7 +192,8 @@ function isNameLabel(text: string): boolean {
 const isHouseLabel = (text: string) => /^house(number|no)/.test(compact(text)) || compact(text).startsWith('ఇంటిసంఖ');
 
 // Telugu labels may come out split by spaces or with unreadable letters ("వయ సు\0", "లి ం గము").
-const AGE = /(?:\bage|వయ[^:\d\n]{0,8})\s*:?\s*(\d{1,3})/i;
+// The age is the first number after the label on its line (a wrapped name may sit between them).
+const AGE = /(?:\bage|వయ)[^\d\n]{0,40}?(\d{1,3})/i;
 const GENDER = /(\bgender|\bsex|లి\s*ం\s*గ\s*(?:ము|ం))\s*:?\s*([^\s:]*)/i;
 
 /**
@@ -201,10 +209,72 @@ function genderValue(boxText: string): string {
   return /^[a-z]/i.test(m[1]) ? '' : 'స్త్రీ';
 }
 
-/** The value after a label: the text after the first ":" (or after the label words when there is none). */
-function labelValue(text: string, label: RegExp): string {
-  const i = text.indexOf(':');
-  return clean(i >= 0 ? text.slice(i + 1) : text.replace(label, ''));
+/** "Photo Not Available" / "Photo" printed in a voter's photo frame: part of the picture area, not voter data. */
+const PHOTO_TEXT = /\bphoto\b(?:\s*(?:is\s*)?(?:not\s*)?a\s*v\s*a\s*i\s*l\s*a\s*b\s*l\s*e\b)?|\bnot\s*a\s*v\s*a\s*i\s*l\s*a\s*b\s*l\s*e\b/gi;
+
+const NAME_LABEL = /^\s*(?:(?:elector'?s\s+)?name|ఓ\s*ట\s*రు\s*పే\s*రు)/i;
+const HOUSE_LABEL = /^\s*(?:house\s*(?:number|no\.?)|ఇం\s*టి\s*సం\s*ఖ?\S*)/i;
+
+interface BoxLine {
+  y: number;
+  line: Line;
+  text: string;
+  /** A line with no label of its own: the wrapped part of a value (the label sits beside another line). */
+  valueOnly: boolean;
+}
+
+/**
+ * The value of a field in a box. A long value wraps onto two lines with its label printed between them (or
+ * beside one of them), so lines without a label of their own are joined to the nearest label line.
+ */
+function fieldValue(rows: BoxLine[], isLabel: (text: string) => boolean, label: RegExp, colonX: number | null): string {
+  const own = rows.find((r) => !r.valueOnly && isLabel(r.text));
+  if (!own) return '';
+  const labels = rows.filter((r) => !r.valueOnly);
+  const parts: { y: number; value: string }[] = [];
+  const i = own.text.indexOf(':');
+  const ownValue =
+    i >= 0
+      ? own.text.slice(i + 1)
+      : colonX !== null
+        ? lineText(own.line.items.filter((it) => it.x >= colonX - 2))
+        : own.text.replace(label, '');
+  parts.push({ y: own.y, value: ownValue });
+  for (const r of rows) {
+    if (!r.valueOnly || EPIC.test(r.text) || GENDER.test(r.text)) continue;
+    const nearest = labels.reduce((a, b) => (Math.abs(b.y - r.y) < Math.abs(a.y - r.y) ? b : a));
+    if (nearest === own) parts.push({ y: r.y, value: r.text.replace(/^:/, '') });
+  }
+  return clean(
+    parts
+      .sort((a, b) => a.y - b.y)
+      .map((p) => p.value.replace(PHOTO_TEXT, ' '))
+      .join(' '),
+  );
+}
+
+/** Reads one voter box; null when it has no EPIC number. */
+function readBox(box: Line[]): RollRecord | null {
+  const colonXs = box.flatMap((l) => l.items.filter((i) => clean(i.str).startsWith(':')).map((i) => i.x));
+  const colonX = colonXs.length >= 2 ? median(colonXs) : null;
+  const rows: BoxLine[] = [];
+  for (const line of box) {
+    const text = clean(lineText(line.items).replace(PHOTO_TEXT, ' '));
+    if (!text) continue;
+    const first = line.items.find((i) => clean(i.str) !== '');
+    rows.push({ y: line.y, line, text, valueOnly: text.startsWith(':') || (colonX !== null && !!first && first.x >= colonX - 2) });
+  }
+  const all = rows.map((r) => r.text).join('\n');
+  const epic = all.match(EPIC);
+  if (!epic) return null;
+  const boxText = all.normalize('NFC').replace(/[​-‍]/g, '');
+  return {
+    voterId: epicValue(epic[1]),
+    fullName: fieldValue(rows, isNameLabel, NAME_LABEL, colonX),
+    houseNumber: fieldValue(rows, isHouseLabel, HOUSE_LABEL, colonX).split(/\s+(?:age|gender)\b/i)[0],
+    age: boxText.match(AGE)?.[1] ?? '',
+    gender: genderValue(boxText),
+  };
 }
 
 const median = (xs: number[]) => {
@@ -267,20 +337,10 @@ class RollReader {
       const right = c + 1 < columns.length ? columns[c + 1] - tol : Infinity;
       for (const box of columnBoxes(groupLines(items.filter((i) => i.x >= left && i.x < right)))) {
         this.boxes++;
-        const texts = box.map((l) => lineText(l.items));
-        const epic = texts.join('\n').match(EPIC);
-        if (!epic) continue;
-        const nameLine = texts.find(isNameLabel);
-        const houseLine = texts.find(isHouseLabel);
-        const boxText = texts.join('\n').normalize('NFC').replace(/[\u200b-\u200d]/g, '');
+        const record = readBox(box);
+        if (!record) continue;
         onPage.push({
-          record: {
-            voterId: epicValue(epic[1]),
-            fullName: nameLine ? labelValue(nameLine, /^\s*(elector'?s\s+)?name/i) : '',
-            houseNumber: houseLine ? labelValue(houseLine, /^\s*house\s*(number|no\.?)/i).split(/\s+(?:age|gender|photo)\b/i)[0] : '',
-            age: boxText.match(AGE)?.[1] ?? '',
-            gender: genderValue(boxText),
-          },
+          record,
           column: c,
           y: box[0].y,
           size: box[0].size,
@@ -298,8 +358,11 @@ class RollReader {
   }
 }
 
-/** A web address such as "https://sec-ems.ap.gov.in/apsec/..." or "sec-ems.ap.gov.in/apsec/...". */
-const WEB_ADDRESS = /https?:\/\/|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/\S/i;
+/**
+ * A web address such as "https://sec-ems.ap.gov.in/apsec/..." or "sec-ems.ap.gov.in/apsec/...". The name must
+ * end in letters (".in/"), so door numbers such as "D.NO.26-39-6/2A" are not taken for one.
+ */
+const WEB_ADDRESS = /https?:\/\/|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\/\S/i;
 /** A line that is only a print date/time and/or a "64/101" page counter. */
 const PRINT_STAMP = /^(?:\d{1,2}\/\d{1,2}\/\d{2,4},?\s*\d{1,2}:\d{2}(?:\s*[AP]M)?|\d{1,4}\s*\/\s*\d{1,4}|\s)+$/i;
 
@@ -312,6 +375,11 @@ function isPrintMargin(line: Line): boolean {
   return WEB_ADDRESS.test(text) || PRINT_STAMP.test(text);
 }
 
+/** Drops print margins, which are only ever the top two and bottom two lines of a page. */
+function withoutPrintMargins(lines: Line[]): Line[] {
+  return lines.filter((l, i) => !((i < 2 || i >= lines.length - 2) && isPrintMargin(l)));
+}
+
 /**
  * Reads a PDF one page at a time and keeps only what it finds (table rows or roll voters), so very large
  * files do not need all their text in memory. Both layouts are tried on every page.
@@ -320,7 +388,16 @@ export class PdfLayoutReader {
   private readonly table = new TableReader();
   private readonly roll = new RollReader();
   private readonly textless: number[] = [];
+  private readonly failed: number[] = [];
+  private failReason = '';
   private pages = 0;
+
+  /** A page whose text could not be read (pdf.js error). */
+  pageFailed(page: number, reason: string): void {
+    this.pages++;
+    this.failed.push(page);
+    this.failReason ||= reason;
+  }
 
   addPage(page: number, items: PdfTextItem[]): void {
     this.pages++;
@@ -329,7 +406,7 @@ export class PdfLayoutReader {
       this.textless.push(page);
       return;
     }
-    const lines = all.filter((l) => !isPrintMargin(l));
+    const lines = withoutPrintMargins(all);
     const kept = new Set(lines.flatMap((l) => l.items));
     this.table.addPage(page, lines);
     this.roll.addPage(
@@ -339,11 +416,13 @@ export class PdfLayoutReader {
   }
 
   finish(): PdfLayout {
-    if (this.textless.length === this.pages) return { kind: 'no-text' };
+    const pages = { textlessPages: this.textless, failedPages: this.failed };
     const rows = this.table.result();
-    if (rows) return { kind: 'table', rows, textlessPages: this.textless };
+    if (rows) return { kind: 'table', rows, ...pages };
     const roll = this.roll.result();
-    if (roll) return { kind: 'roll', roll, textlessPages: this.textless };
+    if (roll) return { kind: 'roll', roll, ...pages };
+    if (this.failed.length) return { kind: 'read-error', reason: this.failReason };
+    if (this.textless.length === this.pages) return { kind: 'no-text' };
     return { kind: 'unknown' };
   }
 }
@@ -361,6 +440,11 @@ export function rollRows(roll: ElectoralRoll, wardNumber: string, boothNumber: s
     ['Voter ID', 'Full Name', 'House / Door Number', 'Ward Number', 'Booth Number', 'Status', 'Age', 'Gender'],
     ...roll.records.map((r) => [r.voterId, r.fullName, r.houseNumber, wardNumber, boothNumber, status, r.age, r.gender]),
   ];
+}
+
+/** Message for pages the browser could not read. */
+export function unreadablePagesMessage(pages: number[]): string {
+  return `${pages.length === 1 ? 'Page' : 'Pages'} ${pageRanges(pages)} of this PDF could not be read in this browser`;
 }
 
 /** Compact page list for messages: [3, 4, 5, 9] -> "3–5, 9". */

@@ -52,10 +52,13 @@ export async function validateImportFile(file: File): Promise<string | null> {
 }
 
 /** What a chosen file holds: worksheets (Excel, CSV or a table PDF) or an Election Commission roll. */
-/** `textlessPages`: PDF pages with no readable text (scanned), which were skipped. */
+/**
+ * `textlessPages`: PDF pages with no readable text (scanned); `failedPages`: PDF pages the browser could not
+ * read. Both were skipped.
+ */
 export type ImportSource =
-  | { kind: 'sheets'; workbook: XLSX.WorkBook; fromPdf: boolean; textlessPages: number[] }
-  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[] };
+  | { kind: 'sheets'; workbook: XLSX.WorkBook; fromPdf: boolean; textlessPages: number[]; failedPages: number[] }
+  | { kind: 'roll'; roll: ElectoralRoll; textlessPages: number[]; failedPages: number[] };
 
 /** A problem with the file's contents, worded for the user. */
 export class ImportFileError extends Error {}
@@ -66,11 +69,11 @@ export async function readImportFile(file: File, onPdfProgress?: (page: number, 
   if (ext === '.pdf') return readPdf(file, onPdfProgress);
   if (ext === '.csv') {
     // raw: keep every value as typed so identifiers such as 00123 keep their leading zeros.
-    return { kind: 'sheets', workbook: XLSX.read(await file.text(), { type: 'string', raw: true }), fromPdf: false, textlessPages: [] };
+    return { kind: 'sheets', workbook: XLSX.read(await file.text(), { type: 'string', raw: true }), fromPdf: false, textlessPages: [], failedPages: [] };
   }
   const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
   for (const name of workbook.SheetNames) fullIntegers(workbook.Sheets[name]);
-  return { kind: 'sheets', workbook, fromPdf: false, textlessPages: [] };
+  return { kind: 'sheets', workbook, fromPdf: false, textlessPages: [], failedPages: [] };
 }
 
 /** Excel shows long whole numbers such as 919876543210 as "9.19877E+11"; use the full number instead. */
@@ -96,10 +99,14 @@ async function readPdf(file: File, onProgress?: (page: number, pages: number) =>
     case 'table': {
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(layout.rows), 'PDF table');
-      return { kind: 'sheets', workbook, fromPdf: true, textlessPages: layout.textlessPages };
+      return { kind: 'sheets', workbook, fromPdf: true, textlessPages: layout.textlessPages, failedPages: layout.failedPages };
     }
     case 'roll':
-      return { kind: 'roll', roll: layout.roll, textlessPages: layout.textlessPages };
+      return { kind: 'roll', roll: layout.roll, textlessPages: layout.textlessPages, failedPages: layout.failedPages };
+    case 'read-error':
+      throw new ImportFileError(
+        `This browser could not read the PDF (${layout.reason}). Update the browser, or open the site in Chrome on a computer and try again.`,
+      );
     case 'no-text':
       throw new ImportFileError('This PDF has no readable text: it looks scanned or photographed. Use a typed PDF, or an Excel or CSV file.');
     default:

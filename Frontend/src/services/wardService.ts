@@ -34,6 +34,12 @@ export const wardService = {
   setWardAmount(wardId: string, amount: number | null): Promise<void> {
     return apiClient.put(`/wards/${encodeURIComponent(wardId)}/payment-amount`, { amount }).then(() => undefined);
   },
+  /** Deletes every voter of a ward (Super Admin). Paid voters are kept unless `includePaid`; then they go with their payments. */
+  deleteVoters(wardId: string, includePaid: boolean): Promise<{ deleted: number; paidDeleted: number; keptPaid: number }> {
+    return apiClient
+      .delete<{ deleted: number; paidDeleted: number; keptPaid: number }>(`/wards/${encodeURIComponent(wardId)}/voters`, { params: { includePaid } })
+      .then((r) => r.data);
+  },
   setWardAdmins(wardId: string, adminIds: string[]): Promise<void> {
     return apiClient.put(`/wards/${encodeURIComponent(wardId)}/admins`, { adminIds }).then(() => undefined);
   },

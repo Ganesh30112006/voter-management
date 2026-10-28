@@ -108,6 +108,7 @@ describe('PDF tables', () => {
         ['V1', 'Ravi', '1', '11', '2', 'Active'],
       ],
       textlessPages: [],
+      failedPages: [],
     });
   });
 });
@@ -284,5 +285,105 @@ describe('heading row', () => {
 describe('rolls with unreadable letters and photos', () => {
   it('reads EPIC numbers whose digits come out split', () => {
     expect(voterIdsInText('ఓటరు ఐడి : NDX270831 1\nNDX3678273 and AP/12/123/456789')).toEqual(['NDX2708311', 'NDX3678273', 'AP/12/123/456789']);
+  });
+
+  it('joins wrapped names and house numbers, and leaves out the photo frame text', () => {
+    // As in the AP photo rolls: a long value wraps onto two lines and its label is printed between them.
+    const item = (x: number, y: number, str: string): PdfTextItem => ({ str, x, y, width: str.length * 4, size: 8 });
+    const box = (x: number, top: number, epic: string, house: PdfTextItem[], name: PdfTextItem[]) => [
+      item(x, top, 'వార్డు.ఓ.జా.వ.సం.. 341'),
+      ...name,
+      item(x, top + 30, 'తండ్రి పేరు'),
+      item(x + 70, top + 30, ': వెంకట శివ'),
+      item(x, top + 42, 'వయసు'),
+      item(x + 70, top + 42, ': 20'),
+      item(x + 110, top + 42, 'లింగము :'),
+      item(x + 150, top + 42, 'పు'),
+      ...house,
+      item(x, top + 66, 'ఓటరు ఐడి. కార్డు నెం. :'),
+      item(x + 95, top + 66, epic),
+    ];
+    const page = [
+      ...box(
+        5,
+        10,
+        'NDX3779972',
+        [item(5, 64, 'ఇంటి సంఖ్య'), item(75, 61, ': 91-1-6, 1st floor SriSai Sadan'), item(75, 67, 'Apartment'), item(220, 50, 'Photo'), item(215, 61, 'Not Available')],
+        [item(75, 21, ': జర్రేముదీ ధనుశ్ శివ నాగమణికాంత'), item(5, 25, 'ఓటరు పేరు'), item(75, 29, 'జమరేముదీ')],
+      ),
+      // A door number with dots and a slash, on the page's last line: not a web address printed in the margin.
+      ...box(285, 10, 'NDX2583672', [item(285, 64, 'ఇంటి సంఖ్య'), item(355, 64, ': D.NO.26-39-6/2A')], [item(285, 22, 'ఓటరు పేరు'), item(355, 22, ': సాయి అనిరుధ్')]),
+    ];
+    const layout = readPdfLayout([page]);
+    expect(layout.kind).toBe('roll');
+    if (layout.kind !== 'roll') return;
+    expect(layout.roll.records).toEqual([
+      { voterId: 'NDX3779972', fullName: 'జర్రేముదీ ధనుశ్ శివ నాగమణికాంత జమరేముదీ', houseNumber: '91-1-6, 1st floor SriSai Sadan Apartment', age: '20', gender: 'పు' },
+      { voterId: 'NDX2583672', fullName: 'సాయి అనిరుధ్', houseNumber: 'D.NO.26-39-6/2A', age: '20', gender: 'పు' },
+    ]);
+  });
+});
+
+describe('PDFs the browser cannot read', () => {
+  /** A stand-in for pdf.js whose text reading fails on the given pages, as on an old phone browser. */
+  const failingPdfJs = (fails: (page: number) => boolean): PdfJsLike => ({
+    PDFDataRangeTransport: class {
+      onDataRange() {}
+      requestDataRange() {}
+    },
+    getDocument: () => ({
+      promise: Promise.resolve({
+        numPages: 2,
+        getPage: async (n: number) => ({
+          getViewport: () => ({ height: 595 }),
+          getTextContent: async () => {
+            if (fails(n)) throw new Error('Promise.withResolvers is not a function');
+            return { items: [{ str: 'NDX3549268', transform: [8, 0, 0, 8, 20, 500], width: 40 }] };
+          },
+          cleanup: () => undefined,
+        }),
+        destroy: async () => undefined,
+      }),
+    }),
+  });
+
+  it('says the browser failed instead of calling the PDF scanned', async () => {
+    expect(await readPdfLayoutFromFile(failingPdfJs(() => true), new Blob(['%PDF']))).toEqual({
+      kind: 'read-error',
+      reason: 'Promise.withResolvers is not a function',
+    });
+  });
+
+  it('reports a page that draws text but gives none (pdf.js hid an error); a page drawing no text is scanned', async () => {
+    const OPS = { setFont: 37, showText: 44 };
+    const silentPdfJs = (drawsText: boolean): PdfJsLike => ({
+      OPS,
+      PDFDataRangeTransport: class {
+        onDataRange() {}
+        requestDataRange() {}
+      },
+      getDocument: () => ({
+        promise: Promise.resolve({
+          numPages: 1,
+          getPage: async () => ({
+            getViewport: () => ({ height: 595 }),
+            getTextContent: async () => ({ items: [] }),
+            getOperatorList: async () => ({
+              fnArray: drawsText ? [OPS.showText] : [],
+              argsArray: drawsText ? [[[{ originalCharCode: 40, unicode: 'E' }]]] : [],
+            }),
+            cleanup: () => undefined,
+          }),
+          destroy: async () => undefined,
+        }),
+      }),
+    });
+    expect(await readPdfLayoutFromFile(silentPdfJs(true), new Blob(['%PDF']))).toEqual({ kind: 'read-error', reason: 'the text of the page could not be read' });
+    expect(await readPdfLayoutFromFile(silentPdfJs(false), new Blob(['%PDF']))).toEqual({ kind: 'no-text' });
+  });
+
+  it('refuses a status list with pages it could not read', async () => {
+    await expect(readPdfVoterIdsFromFile(failingPdfJs((n) => n === 2), new Blob(['%PDF']))).rejects.toThrow('Page 2 of this PDF could not be read');
+    expect(await readPdfVoterIdsFromFile(failingPdfJs(() => false), new Blob(['%PDF']))).toEqual(['NDX3549268']);
   });
 });

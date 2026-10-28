@@ -1,13 +1,15 @@
-import { ChevronDown, ChevronRight, IndianRupee, Pencil, Plus, UserCog, Users } from 'lucide-react';
+import { ChevronDown, ChevronRight, IndianRupee, Pencil, Plus, Trash2, UserCog, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PageHeader } from '../../components/common/PageHeader';
 import { SearchInput } from '../../components/common/SearchInput';
 import { EmptyState, ErrorState, SkeletonLines } from '../../components/common/States';
+import { useConfirm } from '../../hooks/useConfirm';
 import { useQuery } from '../../hooks/useQuery';
 import { useToast } from '../../hooks/useToast';
 import { useCurrentAdmin } from '../../hooks/useAuth';
 import { useWards } from '../../hooks/useWards';
+import { errorMessage } from '../../services/apiError';
 import { wardService } from '../../services/wardService';
 import type { Booth, Ward, WardSummary } from '../../types';
 import { paymentService } from '../../services/paymentService';
@@ -34,12 +36,52 @@ export function WardsPage() {
   const [search, setSearch] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const confirm = useConfirm();
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const afterChange = (message: string) => {
     toast.success(message);
     setDialog(null);
     setRefreshKey((k) => k + 1);
     reloadReference().catch(() => undefined);
+  };
+
+  const voters = (n: number) => `${formatNumber(n)} voter${n === 1 ? '' : 's'}`;
+
+  /** Super Admin: deletes a ward's voters; paid voters only after a second question. */
+  const deleteVoters = async (w: WardSummary) => {
+    const ok = await confirm({
+      title: `Delete the voters of Ward ${w.number}?`,
+      message: `Every voter of Ward ${w.number} – ${w.name} (${voters(w.voterCount)}) will be deleted for all Corporators. Voters who have received a payment are kept; you will be asked about them next. This cannot be undone.`,
+      confirmLabel: 'Delete voters',
+      tone: 'danger',
+    });
+    if (!ok) return;
+    setDeleting(w.id);
+    try {
+      const first = await wardService.deleteVoters(w.id, false);
+      let message = `${voters(first.deleted)} of Ward ${w.number} deleted.`;
+      if (first.keptPaid) {
+        const also = await confirm({
+          title: `Also delete ${voters(first.keptPaid)} who received a payment?`,
+          message: `${voters(first.keptPaid)} of Ward ${w.number} received a payment and ${first.keptPaid === 1 ? 'was' : 'were'} kept. Delete them too? Their payments are deleted with them and leave Payment History, reports and BLO cash totals. Cancel keeps them. This cannot be undone.`,
+          confirmLabel: 'Delete paid voters too',
+          tone: 'danger',
+        });
+        if (also) {
+          const second = await wardService.deleteVoters(w.id, true);
+          message = `${voters(first.deleted + second.deleted)} of Ward ${w.number} deleted, including ${formatNumber(second.paidDeleted)} who received a payment.`;
+        } else {
+          message += ` ${voters(first.keptPaid)} who received a payment ${first.keptPaid === 1 ? 'was' : 'were'} kept.`;
+        }
+      }
+      afterChange(message);
+    } catch (e) {
+      toast.error(errorMessage(e));
+      setRefreshKey((k) => k + 1);
+    } finally {
+      setDeleting(null);
+    }
   };
 
   const term = search.trim().toLowerCase();
@@ -136,6 +178,17 @@ export function WardsPage() {
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDialog({ kind: 'ward', ward: w })} aria-label={`Edit ward ${w.number}`}>
                           <Pencil size={15} aria-hidden="true" />
                         </button>
+                        {w.voterCount > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-danger"
+                            onClick={() => deleteVoters(w)}
+                            disabled={deleting !== null}
+                            aria-label={`Delete the voters of ward ${w.number}`}
+                          >
+                            <Trash2 size={15} aria-hidden="true" /> {deleting === w.id ? 'Deleting…' : 'Delete voters'}
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
