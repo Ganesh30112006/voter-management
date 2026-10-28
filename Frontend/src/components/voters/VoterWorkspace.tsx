@@ -50,7 +50,8 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
   const [status, setStatus] = useState<VoterStatus | ''>('');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>(initialPaymentStatus);
   // Voter ID order by default (the EPIC number printed on the roll).
-  const [sort, setSort] = useState<SortState>({ sortBy: 'voterId', sortDir: 'asc' });
+  // Roll order: ward, then the serial number printed in each voter box.
+  const [sort, setSort] = useState<SortState>({ sortBy: 'serialNumber', sortDir: 'asc' });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const debouncedSearch = useDebounce(search.trim(), 300);
@@ -92,6 +93,7 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
 
   const columns = useMemo<Column<VoterListItem>[]>(
     () => [
+      { key: 'serial', header: 'Serial No.', sortKey: 'serialNumber', render: (v) => v.serialNumber ?? <span className="muted">—</span> },
       { key: 'voterId', header: 'Voter ID', sortKey: 'voterId', render: (v) => <span className="mono">{v.voterId}</span> },
       {
         key: 'name',
@@ -148,8 +150,9 @@ export function VoterWorkspace({ initialWardId = '', initialBoothId = '', initia
       downloadXlsx('voters.xlsx', [
         {
           name: 'Voters',
-          headers: ['Voter ID', 'Full Name', 'Age', 'Gender', 'Ward', 'Booth', 'House / Door Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
+          headers: ['Serial No.', 'Voter ID', 'Full Name', 'Age', 'Gender', 'Ward', 'Booth', 'House / Door Number', 'Household ID', 'Address', 'Voter Status', 'Payment Status', 'Receiver', 'Receiver Mobile', 'Received At'],
           rows: rows.map((v) => [
+            v.serialNumber ?? '',
             v.voterId,
             v.fullName,
             v.age ?? '',

@@ -38,6 +38,7 @@ const EMPTY: VoterFormValues = {
   status: '',
   age: '',
   gender: '',
+  serialNumber: '',
 };
 
 const FIELDS = Object.keys(EMPTY) as (keyof VoterFormValues)[];
@@ -69,6 +70,7 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
       ...state.initial,
       age: state.initial?.age == null ? '' : String(state.initial.age),
       gender: state.initial?.gender ?? '',
+      serialNumber: state.initial?.serialNumber == null ? '' : String(state.initial.serialNumber),
     },
   });
 
@@ -237,6 +239,13 @@ export function VoterFormModal({ state, onClose, onSaved }: Props) {
           </FormField>
           <FormField label="House / door number" error={errors.houseNumber?.message} required>
             <input className="input" autoComplete="off" {...register('houseNumber')} />
+          </FormField>
+          <FormField
+            label="Serial No."
+            error={errors.serialNumber?.message}
+            hint={sharedLocked ? 'From the ward roll; shared with other Corporators' : 'Optional. Number in the ward roll'}
+          >
+            <input className="input" type="number" inputMode="numeric" min={1} readOnly={sharedLocked} {...register('serialNumber')} />
           </FormField>
           <FormField label="Age" error={errors.age?.message} hint="Optional">
             <input className="input" type="number" inputMode="numeric" min={18} max={120} {...register('age')} />

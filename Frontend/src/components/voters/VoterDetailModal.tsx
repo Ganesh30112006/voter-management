@@ -113,6 +113,10 @@ export function VoterDetailModal({ recordId, refreshKey, onClose, onPay, onViewT
               </dd>
             </div>
             <div>
+              <dt>Serial No.</dt>
+              <dd>{v.serialNumber ?? '—'}</dd>
+            </div>
+            <div>
               <dt>House / door number</dt>
               <dd>{v.houseNumber}</dd>
             </div>

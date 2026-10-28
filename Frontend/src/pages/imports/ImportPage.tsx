@@ -11,7 +11,7 @@ import { useToast } from '../../hooks/useToast';
 import { useWards } from '../../hooks/useWards';
 import { errorMessage } from '../../services/apiError';
 import { ACCEPT_ATTR, downloadTemplate, hasDataRows, ImportFileError, importService, readImportFile, sheetRows, validateImportFile } from '../../services/importService';
-import { VOTER_STATUSES, type ImportResult } from '../../types';
+import { VOTER_STATUSES, type ImportResult, type ImportRow } from '../../types';
 import { downloadXlsx } from '../../utils/download';
 import { formatNumber } from '../../utils/format';
 import { wardsInArea } from '../../utils/permissions';
@@ -213,13 +213,16 @@ export function ImportPage() {
   };
 
   const runImport = async () => {
-    const rows = validated.filter((r) => r.voter).map((r) => ({ rowNumber: r.rowNumber, voter: r.voter!, replace: r.replaces }));
-    const skipped = validated.length - rows.length;
-    const replacing = rows.filter((r) => r.replace).length;
+    const toSave: ImportRow[] = validated.filter((r) => r.voter).map((r) => ({ rowNumber: r.rowNumber, voter: r.voter!, replace: r.replaces }));
+    const serialsOnly: ImportRow[] = validated.filter((r) => r.keepSerial).map((r) => ({ rowNumber: r.rowNumber, voter: r.keepSerial!, keep: true }));
+    const rows = [...toSave, ...serialsOnly];
+    const skipped = validated.length - toSave.length;
+    const replacing = validated.filter((r) => r.voter && r.replaces).length;
     const ok = await confirm({
-      title: `Import ${formatNumber(rows.length)} voters?`,
+      title: `Import ${formatNumber(toSave.length)} voters?`,
       message: [
         replacing > 0 ? `${formatNumber(replacing)} existing voters will get the file's details (their payments are kept).` : '',
+        serialsOnly.length > 0 ? `${formatNumber(serialsOnly.length)} existing voters you keep get their serial number from the file.` : '',
         skipped > 0
           ? `${formatNumber(skipped)} invalid or duplicate rows will be skipped. You can still correct them before importing.`
           : 'All rows passed validation.',
@@ -232,7 +235,7 @@ export function ImportPage() {
     setStep('importing');
     setProgress({ done: 0, total: rows.length });
     try {
-      const res = await importService.run(file?.name ?? 'import', rows, skipped, (done, total) => setProgress({ done, total }));
+      const res = await importService.run(file?.name ?? 'import', rows, validated.length - rows.length, (done, total) => setProgress({ done, total }));
       setResult(res);
       setStep('done');
       ctxQuery.reload();
@@ -657,6 +660,7 @@ export function ImportPage() {
                       <thead>
                         <tr>
                           <th scope="col">Row</th>
+                          <th scope="col">Serial No.</th>
                           <th scope="col">Voter ID</th>
                           <th scope="col">Name</th>
                           <th scope="col">Ward</th>
@@ -737,6 +741,12 @@ export function ImportPage() {
                 <strong>{formatNumber(result.skipped)}</strong>
                 <span>Skipped</span>
               </div>
+              {result.serials > 0 && (
+                <div>
+                  <strong>{formatNumber(result.serials)}</strong>
+                  <span>Serial numbers filled</span>
+                </div>
+              )}
               <div>
                 <strong>{formatNumber(result.failed)}</strong>
                 <span>Failed</span>
@@ -797,6 +807,7 @@ function RowView({
     <>
       <tr>
         <td data-label="Row">{row.rowNumber}</td>
+        <td data-label="Serial No.">{cell('serialNumber')}</td>
         <td data-label="Voter ID" className="mono">
           {cell('voterId')}
         </td>
@@ -831,7 +842,7 @@ function RowView({
       </tr>
       {editable && editing && (
         <tr className="row-editor">
-          <td colSpan={8}>
+          <td colSpan={9}>
             <div className="row-editor-grid">
               {IMPORT_FIELDS.filter((f) => editingFields?.includes(f.key)).map((f) => (
                 <label key={f.key} className="field">

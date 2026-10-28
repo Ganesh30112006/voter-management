@@ -11,7 +11,8 @@ export type ImportField =
   | 'address'
   | 'status'
   | 'age'
-  | 'gender';
+  | 'gender'
+  | 'serialNumber';
 
 export const IMPORT_FIELDS: { key: ImportField; label: string; required: boolean; synonyms: string[] }[] = [
   { key: 'voterId', label: 'Voter ID', required: true, synonyms: ['voter id', 'voterid', 'epic', 'epic no', 'epic number', 'electoral id', 'voter id no'] },
@@ -29,6 +30,12 @@ export const IMPORT_FIELDS: { key: ImportField; label: string; required: boolean
   { key: 'status', label: 'Status', required: true, synonyms: ['status', 'voter status'] },
   { key: 'age', label: 'Age', required: false, synonyms: ['age', 'వయస్సు', 'వయసు'] },
   { key: 'gender', label: 'Gender', required: false, synonyms: ['gender', 'sex', 'లింగము', 'లింగం'] },
+  {
+    key: 'serialNumber',
+    label: 'Serial No.',
+    required: false,
+    synonyms: ['serial no', 'serial number', 'serial', 'sl no', 'sl', 's no', 'sno', 'slno', 'sr no', 'వరుస సంఖ్య', 'క్రమ సంఖ్య'],
+  },
 ];
 
 export const TEMPLATE_HEADERS = IMPORT_FIELDS.map((f) => f.label);
@@ -131,6 +138,11 @@ export interface ValidatedRow {
   replaces: boolean;
   /** The Booth Number is not a booth of the row's ward: booth is optional, so the voter is added without one. */
   boothNotFound: boolean;
+  /**
+   * The Voter ID already exists and the user keeps that voter: its serial number is still filled in from the
+   * file (the serial number belongs to the roll). Null when the row has no usable serial number or ward.
+   */
+  keepSerial: { voterId: string; wardId: string; serialNumber: number } | null;
 }
 
 export interface ValidationContext {
@@ -144,6 +156,14 @@ export interface ValidationContext {
    * skipped) or replace that voter's details with the row.
    */
   existingVoters?: 'keep' | 'replace';
+}
+
+/** A serial number cell: null when empty, NaN when not a whole number from 1 to 999999 ("019" is 19). */
+export function parseSerialNumber(raw: string): number | null {
+  const text = raw.trim();
+  if (text === '') return null;
+  const n = /^\d{1,7}$/.test(text) ? Number(text) : NaN;
+  return n >= 1 && n <= 999999 ? n : NaN;
 }
 
 /** "3", "03", "Ward 3", "W3" -> 3 */
@@ -166,6 +186,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
     const issues: RowIssue[] = [];
     let duplicate = false;
     let replaces = false;
+    let kept = false;
 
     for (const f of IMPORT_FIELDS) {
       if (f.required && f.key !== 'status' && values[f.key] === '') {
@@ -177,6 +198,8 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
     if (age !== null && !(age >= 18 && age <= 120)) issues.push({ field: 'age', message: `"${values.age}" is not a valid age (18 to 120)` });
     const gender = normalizeGender(values.gender);
     if (gender === null) issues.push({ field: 'gender', message: `"${values.gender}" is not a valid gender (Male, Female, Other)` });
+    const serialNumber = parseSerialNumber(values.serialNumber);
+    if (Number.isNaN(serialNumber)) issues.push({ field: 'serialNumber', message: `"${values.serialNumber}" is not a valid serial number (1 to 999999)` });
 
     const status = normalizeVoterStatus(values.status);
     if (values.status === '') issues.push({ field: 'status', message: 'Status is missing' });
@@ -223,6 +246,7 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
         if (ctx.existingVoterIds.has(key) && ctx.existingVoters === 'replace') replaces = true;
         else if (ctx.existingVoterIds.has(key)) {
           duplicate = true;
+          kept = true;
           issues.push({ field: 'voterId', message: 'Voter ID already exists in the system' });
         }
       }
@@ -243,9 +267,11 @@ export function validateRows(rows: RawRow[], ctx: ValidationContext): ValidatedR
             status,
             age,
             gender,
+            serialNumber,
           }
         : null;
+    const keepSerial = kept && ward && serialNumber !== null && !Number.isNaN(serialNumber) ? { voterId: values.voterId, wardId: ward.id, serialNumber } : null;
 
-    return { rowNumber, values, issues, category, voter, replaces: replaces && category === 'valid', boothNotFound };
+    return { rowNumber, values, issues, category, voter, replaces: replaces && category === 'valid', boothNotFound, keepSerial };
   });
 }

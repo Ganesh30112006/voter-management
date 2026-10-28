@@ -33,12 +33,16 @@ describe('voter status', () => {
   });
 
   it('requires an explicit status in the voter form', () => {
-    const base = { voterId: 'ABC1', fullName: 'Ravi Kumar', wardId: 'W1', boothId: '', houseNumber: '1', householdId: '', address: '', age: '', gender: '' };
+    const base = { voterId: 'ABC1', fullName: 'Ravi Kumar', wardId: 'W1', boothId: '', houseNumber: '1', householdId: '', address: '', age: '', gender: '', serialNumber: '' };
     expect(voterSchema.safeParse({ ...base, status: '' }).success).toBe(false);
     expect(voterSchema.safeParse({ ...base, status: 'Active' }).success).toBe(true);
     // Age and gender are optional; when given they must be sensible.
     expect(voterSchema.parse({ ...base, status: 'Active', age: '44', gender: 'Female' })).toMatchObject({ age: 44, gender: 'Female' });
     expect(voterSchema.safeParse({ ...base, status: 'Active', age: '7' }).success).toBe(false);
+    // The ward roll serial number is optional too.
+    expect(voterSchema.parse({ ...base, status: 'Active', serialNumber: '19' })).toMatchObject({ serialNumber: 19 });
+    expect(voterSchema.parse({ ...base, status: 'Active' })).toMatchObject({ serialNumber: null });
+    expect(voterSchema.safeParse({ ...base, status: 'Active', serialNumber: '0' }).success).toBe(false);
   });
 });
 

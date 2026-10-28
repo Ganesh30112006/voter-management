@@ -23,6 +23,8 @@ export interface RollRecord {
   age: string;
   /** Gender as printed (లింగము: పు / స్త్రీ, or Male / Female), '' when missing. */
   gender: string;
+  /** Serial number in the ward roll (వార్డు.ఓ.జా.వ.సం.. 19), '' when missing. */
+  serialNumber: string;
 }
 
 export interface ElectoralRoll {
@@ -267,14 +269,33 @@ function readBox(box: Line[]): RollRecord | null {
   const all = rows.map((r) => r.text).join('\n');
   const epic = all.match(EPIC);
   if (!epic) return null;
-  const boxText = all.normalize('NFC').replace(/[​-‍]/g, '');
+  // The serial line is above the voter's name (the next box's may follow below it).
+  const nameRow = rows.findIndex((r) => !r.valueOnly && isNameLabel(r.text));
+  const above = rows.slice(0, Math.max(nameRow, 0)).map((r) => r.text);
+  const boxText = all.normalize('NFC').replace(/[\u200b-\u200d]/g, '');
   return {
     voterId: epicValue(epic[1]),
     fullName: fieldValue(rows, isNameLabel, NAME_LABEL, colonX),
     houseNumber: fieldValue(rows, isHouseLabel, HOUSE_LABEL, colonX).split(/\s+(?:age|gender)\b/i)[0],
     age: boxText.match(AGE)?.[1] ?? '',
     gender: genderValue(boxText),
+    serialNumber: serialNumberIn(above, !/ఓటరు/.test(all)),
   };
+}
+
+// "వార్డు.ఓ.జా.వ.సం.. 19 అ.ఓ.జా.వ.సం.94 - 194 - 264": the first number after "వ.సం" is the ward roll serial
+// number (the second is the assembly reference, not used).
+const SERIAL = /వ\s*\.?\s*సం[\s.]*?(\d{1,6})(?!\d)/;
+
+/** The roll serial number in a box's lines above the name: the Telugu label, or (English rolls only) a leading number. */
+function serialNumberIn(texts: string[], english = false): string {
+  for (const t of texts) {
+    const m = t.match(SERIAL);
+    if (m) return String(Number(m[1]));
+  }
+  if (!english) return '';
+  const lead = texts[0]?.match(/^(\d{1,6})(?=\s|$)/);
+  return lead ? String(Number(lead[1])) : '';
 }
 
 const median = (xs: number[]) => {
@@ -335,10 +356,17 @@ class RollReader {
     for (let c = 0; c < columns.length; c++) {
       const left = c === 0 ? -Infinity : columns[c] - tol;
       const right = c + 1 < columns.length ? columns[c + 1] - tol : Infinity;
-      for (const box of columnBoxes(groupLines(items.filter((i) => i.x >= left && i.x < right)))) {
+      const columnLines = groupLines(items.filter((i) => i.x >= left && i.x < right));
+      for (const box of columnBoxes(columnLines)) {
         this.boxes++;
         const record = readBox(box);
         if (!record) continue;
+        if (!record.serialNumber) {
+          // A box whose name wraps starts on its first name line; its serial line is just above it.
+          const at = columnLines.indexOf(box[0]);
+          const before = columnLines.slice(Math.max(0, at - 2), at).map((l) => lineText(l.items));
+          record.serialNumber = serialNumberIn(before.filter((t) => SERIAL.test(t)).slice(-1));
+        }
         onPage.push({
           record,
           column: c,
@@ -437,8 +465,8 @@ export function readPdfLayout(pages: PdfTextItem[][]): PdfLayout {
 /** Sheet rows for a roll, with the ward, (optional) booth and status chosen for the whole file. */
 export function rollRows(roll: ElectoralRoll, wardNumber: string, boothNumber: string, status: string): string[][] {
   return [
-    ['Voter ID', 'Full Name', 'House / Door Number', 'Ward Number', 'Booth Number', 'Status', 'Age', 'Gender'],
-    ...roll.records.map((r) => [r.voterId, r.fullName, r.houseNumber, wardNumber, boothNumber, status, r.age, r.gender]),
+    ['Voter ID', 'Full Name', 'House / Door Number', 'Ward Number', 'Booth Number', 'Status', 'Age', 'Gender', 'Serial No.'],
+    ...roll.records.map((r) => [r.voterId, r.fullName, r.houseNumber, wardNumber, boothNumber, status, r.age, r.gender, r.serialNumber]),
   ];
 }
 

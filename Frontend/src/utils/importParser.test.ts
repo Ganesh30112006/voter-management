@@ -139,3 +139,29 @@ describe('row validation', () => {
     expect(parseUnitNumber('three', 'ward')).toBeNull();
   });
 });
+
+describe('serial numbers', () => {
+  it('reads the roll serial number, and keeps it for existing voters that are not replaced', () => {
+    const cols = ['S.No', 'Voter ID', 'Name', 'Ward', 'House No', 'Status'];
+    const mapping = autoDetectMapping(cols);
+    expect(mapping.serialNumber).toBe(0);
+    const rows = validateRows(
+      extractRows(
+        [
+          ['019', 'NEW1', 'Ravi', '1', '1-1', 'Active'],
+          ['20', 'OLD1', 'Sita', '1', '1-2', 'Active'],
+          ['x7', 'NEW2', 'Anil', '1', '1-3', 'Active'],
+          ['', 'NEW3', 'Gopal', '1', '1-4', 'Active'],
+        ],
+        mapping,
+      ),
+      ctx({ existingVoterIds: new Set(['OLD1']) }),
+    );
+    expect(rows[0].voter).toMatchObject({ voterId: 'NEW1', serialNumber: 19 });
+    expect(rows[1]).toMatchObject({ category: 'duplicate', voter: null, keepSerial: { voterId: 'OLD1', wardId: 'W1', serialNumber: 20 } });
+    expect(rows[2].category).toBe('invalid');
+    expect(rows[2].issues[0].message).toContain('serial number');
+    expect(rows[3].voter).toMatchObject({ serialNumber: null });
+    expect(rows[3].keepSerial).toBeNull();
+  });
+});

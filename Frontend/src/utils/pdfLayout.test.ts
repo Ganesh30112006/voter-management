@@ -154,17 +154,18 @@ describe('Election Commission rolls', () => {
     expect(layout.roll.unreadBoxes).toBe(1);
     expect(layout.roll.records).toEqual(
       expect.arrayContaining([
-        { voterId: 'ABC1234561', fullName: 'RAMESH KUMAR', houseNumber: '12-3/A', age: '45', gender: 'Male' },
-        { voterId: 'ABC1234562', fullName: 'SITA DEVI', houseNumber: '12-4', age: '45', gender: 'Male' },
-        { voterId: 'AP/12/123/456789', fullName: 'ANIL', houseNumber: '7', age: '45', gender: 'Male' },
-        { voterId: 'XYZ7654321', fullName: 'LAKSHMI', houseNumber: '8', age: '45', gender: 'Male' },
-        { voterId: 'XYZ7654322', fullName: 'GOPAL', houseNumber: '9', age: '45', gender: 'Male' },
+        { voterId: 'ABC1234561', fullName: 'RAMESH KUMAR', houseNumber: '12-3/A', age: '45', gender: 'Male', serialNumber: '1' },
+        { voterId: 'ABC1234562', fullName: 'SITA DEVI', houseNumber: '12-4', age: '45', gender: 'Male', serialNumber: '2' },
+        { voterId: 'AP/12/123/456789', fullName: 'ANIL', houseNumber: '7', age: '45', gender: 'Male', serialNumber: '3' },
+        { voterId: 'XYZ7654321', fullName: 'LAKSHMI', houseNumber: '8', age: '45', gender: 'Male', serialNumber: '4' },
+        { voterId: 'XYZ7654322', fullName: 'GOPAL', houseNumber: '9', age: '45', gender: 'Male', serialNumber: '5' },
       ]),
     );
     expect(layout.roll.records.map((r) => r.voterId)).toEqual(['ABC1234561', 'ABC1234562', 'AP/12/123/456789', 'XYZ7654321', 'XYZ7654322']);
     const rows = rollRows(layout.roll, '4', '', 'Active');
     expect(mappingErrors(autoDetectMapping(rows[0]))).toEqual([]);
-    expect(rows[1].slice(3)).toEqual(['4', '', 'Active', '45', 'Male']);
+    expect(rows[1].slice(3)).toEqual(['4', '', 'Active', '45', 'Male', '1']);
+    expect(autoDetectMapping(rows[0]).serialNumber).toBe(8);
   });
 
   it('lists scanned pages that were skipped', async () => {
@@ -228,11 +229,11 @@ describe('Election Commission rolls', () => {
     expect(layout.kind).toBe('roll');
     if (layout.kind !== 'roll') return;
     expect(layout.roll.records).toEqual([
-      { voterId: 'NDX3549268', fullName: 'హిదాయతుల్లా సయ్యద్', houseNumber: '92-25-1949', age: '43', gender: 'పు' },
-      { voterId: 'NDX3549250', fullName: 'అస్మ సయ్యద్', houseNumber: '92-25-1949', age: '30', gender: 'స్త్రీ' },
-      { voterId: 'NDX3230158', fullName: 'అశ్రుఫున పఠాన్', houseNumber: '92-25-1975', age: '43', gender: 'పు' },
-      { voterId: 'SOT0898421', fullName: 'అనీల్ దండిభొట్ల', houseNumber: '92-25-2044', age: '43', gender: 'పు' },
-      { voterId: 'NDX2529600', fullName: 'శల్మా షేక్', houseNumber: '92-23-188', age: '43', gender: 'పు' },
+      { voterId: 'NDX3549268', fullName: 'హిదాయతుల్లా సయ్యద్', houseNumber: '92-25-1949', age: '43', gender: 'పు', serialNumber: '163' },
+      { voterId: 'NDX3549250', fullName: 'అస్మ సయ్యద్', houseNumber: '92-25-1949', age: '30', gender: 'స్త్రీ', serialNumber: '164' },
+      { voterId: 'NDX3230158', fullName: 'అశ్రుఫున పఠాన్', houseNumber: '92-25-1975', age: '43', gender: 'పు', serialNumber: '165' },
+      { voterId: 'SOT0898421', fullName: 'అనీల్ దండిభొట్ల', houseNumber: '92-25-2044', age: '43', gender: 'పు', serialNumber: '166' },
+      { voterId: 'NDX2529600', fullName: 'శల్మా షేక్', houseNumber: '92-23-188', age: '43', gender: 'పు', serialNumber: '167' },
     ]);
     // The box without an EPIC number is counted, not silently dropped.
     expect(layout.roll.unreadBoxes).toBe(1);
@@ -318,8 +319,8 @@ describe('rolls with unreadable letters and photos', () => {
     expect(layout.kind).toBe('roll');
     if (layout.kind !== 'roll') return;
     expect(layout.roll.records).toEqual([
-      { voterId: 'NDX3779972', fullName: 'జర్రేముదీ ధనుశ్ శివ నాగమణికాంత జమరేముదీ', houseNumber: '91-1-6, 1st floor SriSai Sadan Apartment', age: '20', gender: 'పు' },
-      { voterId: 'NDX2583672', fullName: 'సాయి అనిరుధ్', houseNumber: 'D.NO.26-39-6/2A', age: '20', gender: 'పు' },
+      { voterId: 'NDX3779972', fullName: 'జర్రేముదీ ధనుశ్ శివ నాగమణికాంత జమరేముదీ', houseNumber: '91-1-6, 1st floor SriSai Sadan Apartment', age: '20', gender: 'పు', serialNumber: '341' },
+      { voterId: 'NDX2583672', fullName: 'సాయి అనిరుధ్', houseNumber: 'D.NO.26-39-6/2A', age: '20', gender: 'పు', serialNumber: '341' },
     ]);
   });
 });

@@ -99,6 +99,12 @@ export const voterSchema = z.object({
     .refine((v) => v === '' || (/^\d+$/.test(v) && Number(v) >= 18 && Number(v) <= 120), 'Age must be a whole number from 18 to 120')
     .transform((v) => (v === '' ? null : Number(v))),
   gender: z.enum(['', ...GENDERS]),
+  // The voter's serial number in the ward roll; optional.
+  serialNumber: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || (/^\d{1,6}$/.test(v) && Number(v) >= 1), 'Serial number must be a whole number from 1 to 999999')
+    .transform((v) => (v === '' ? null : Number(v))),
 });
 /** Status starts empty: the admin must choose it (no default is ever assigned). */
 export type VoterFormValues = Omit<z.input<typeof voterSchema>, "status"> & { status: VoterStatus | "" };

@@ -101,6 +101,8 @@ export interface Voter {
   age: number | null;
   /** As printed on the roll (లింగము); '' when unknown. */
   gender: Gender;
+  /** Serial number in the ward roll (వార్డు ఓటర్ల జాబితా వరుస సంఖ్య), shared by every team; null when unknown. */
+  serialNumber: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -117,6 +119,7 @@ export interface VoterInput {
   status: VoterStatus;
   age: number | null;
   gender: Gender;
+  serialNumber: number | null;
 }
 
 export interface VoterListItem extends Voter {
@@ -150,7 +153,7 @@ export interface VoterQuery {
   boothId?: string;
   status?: VoterStatus | '';
   paymentStatus?: PaymentStatus | '';
-  sortBy?: 'voterId' | 'fullName' | 'ward' | 'booth' | 'houseNumber' | 'status';
+  sortBy?: 'serialNumber' | 'voterId' | 'fullName' | 'ward' | 'booth' | 'houseNumber' | 'status';
   sortDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
@@ -406,12 +409,15 @@ export interface Notification {
 }
 
 /** A single row ready to be sent to the import endpoint. */
-export interface ImportRow {
-  rowNumber: number;
-  voter: VoterInput;
-  /** Overwrite the existing voter with this Voter ID instead of skipping the row. */
-  replace?: boolean;
-}
+export type ImportRow =
+  | {
+      rowNumber: number;
+      voter: VoterInput;
+      /** Overwrite the existing voter with this Voter ID instead of skipping the row. */
+      replace?: boolean;
+    }
+  /** An existing voter the user keeps: only its serial number (part of the roll) is filled in from the file. */
+  | { rowNumber: number; voter: { voterId: string; wardId: string; serialNumber: number }; keep: true };
 
 export interface ImportResult {
   imported: number;
@@ -419,5 +425,7 @@ export interface ImportResult {
   replaced: number;
   skipped: number;
   failed: number;
+  /** Voters that were kept (not replaced) but got their serial number from the file. */
+  serials: number;
   errors: { rowNumber: number; message: string }[];
 }
